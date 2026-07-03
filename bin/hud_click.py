@@ -131,44 +131,11 @@ def send_command(pane, text):
         if line == f"❯ {text}":
             tmux("send-keys", "-t", pane, "Enter")
             time.sleep(1.5)
-            confirm_if_dialog(pane, text)
             return True
         seen.append(line)
         time.sleep(0.6)
     log(f"send_command 失败 text={text!r} 每次验证看到的 composer={seen!r}")
     return False
-
-
-def command_outcome(pane, text):
-    """找到本条命令行后紧跟的结果行（Set …/Kept …），没有则返回 None（疑似弹窗挡住）。"""
-    r = tmux("capture-pane", "-t", pane, "-p")
-    if r.returncode != 0:
-        return None
-    lines = [l.strip().replace("\xa0", " ") for l in r.stdout.splitlines()]
-    idx = None
-    for i, l in enumerate(lines):
-        if l == f"❯ {text}":
-            idx = i  # 取最后一次出现
-    if idx is None:
-        return None
-    for l in lines[idx + 1:idx + 4]:
-        if l.startswith("⎿"):
-            return l
-    return None
-
-
-def confirm_if_dialog(pane, text):
-    """>200k 上下文的会话切 1M 模型/effort 会弹 usage-credits 确认框，命令结果被挡住。
-
-    没看到结果行时补按一次 Enter：空 composer 上是无操作；弹窗开着时选中默认项。
-    结果记日志（若日志显示默认项是取消，需要改成先按方向键再 Enter）。
-    """
-    if command_outcome(pane, text) is not None:
-        return
-    log(f"未见结果行，疑似确认弹窗，补按 Enter 兜底 text={text!r}")
-    tmux("send-keys", "-t", pane, "Enter")
-    time.sleep(1.2)
-    log(f"兜底后结果: {command_outcome(pane, text)!r}")
 
 
 def log(msg):

@@ -60,7 +60,7 @@ bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*HAIKU.*XHIGH,#{mouse_line}}' 
 - 点击换挡会先 `C-u` 清行——claude 输入框里别留没发的草稿。
 - 换挡条文案（token 与 `⇧` 标记）和 tmux 绑定的正则、`hud_click.py` 的 `TOKENS` 三处耦合，改一处要同步另两处。
 - 刚切完模型立刻再点，注入偶尔要多重试一两轮（claude 重渲染窗口），点了没反应等一两秒即可；日志在 `logs/hud-click.log`。
-- **上下文超过 200k 的会话**（1M 模型下 Context >20%）里切 1M 模型 / effort，Claude Code 会弹 usage-credits 确认框，取消即显示 "Kept model as …"。处理器对此有兜底：没看到结果行时补按一次 Enter 选默认项并记日志（空输入框上补按是无操作，零风险）。普通会话（<200k）完全无感。
+- **上下文超过 200k 的会话**（1M 模型下 Context >20%）里切 1M 模型 / effort，Claude Code 会弹 usage-credits 确认框——这是有意保留的护栏（此时换模型 = 整个上下文缓存作废、按长上下文价计费），**由你在弹窗上手动确认或取消**，处理器不代按。取消即显示 "Kept model as …"，即保持原档。注意弹窗开着时先别点下一次换挡（注入前的清行键会把弹窗关掉）。
 - 想换默认档：直接改 `~/.claude/settings.json` 的 `model`/`effortLevel`（或 `/model` 里按 Enter）——换挡条的 DEFAULT 永远指向点击瞬间 settings 里的值，无需刷新任何快照。
 
 依赖：tmux ≥3.1（用到 `m/r:` 正则与 `mouse_line`）、jq、python3（macOS 自带）。
