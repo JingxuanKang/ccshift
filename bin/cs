@@ -1,0 +1,146 @@
+#!/bin/bash
+# cs — Claude Code 会话级快速启动器 + 默认值（pin）管理
+#
+#   cs                    用钉住的默认值启动（等于裸 claude）
+#   cs o                  opus 启动（仅本会话）
+#   cs o h                opus + high effort 启动（仅本会话）
+#   cs s1m x -c           sonnet[1m] + xhigh，继续上次对话
+#   cs pin f1m x          改默认：pin.json 和 settings.json 一起更新
+#   cs status             查看钉住值 / settings 现值 / 守护状态
+#
+# 模型别名: f=fable  o=opus  s=sonnet  h=haiku  op=opusplan
+#           f1m/o1m/s1m = 对应 1M 上下文变体
+# effort:   l=low  m=medium  h/hi=high  x=xhigh
+set -euo pipefail
+
+SELF="$(readlink -f "$0")"
+PROJ="$(cd "$(dirname "$SELF")/.." && pwd)"
+PIN="$PROJ/pin.json"
+SETTINGS="$HOME/.claude/settings.json"
+
+model_alias() {
+  case "$1" in
+    f|fable)      echo "fable" ;;
+    f1m|fable1m)  echo "claude-fable-5[1m]" ;;
+    o|opus)       echo "opus" ;;
+    o1m|opus1m)   echo "opus[1m]" ;;
+    s|sonnet)     echo "sonnet" ;;
+    s1m|sonnet1m) echo "sonnet[1m]" ;;
+    h|haiku)      echo "haiku" ;;
+    op|opusplan)  echo "opusplan" ;;
+    *)            echo "" ;;
+  esac
+}
+
+effort_alias() {
+  case "$1" in
+    l|low)        echo "low" ;;
+    m|med|medium) echo "medium" ;;
+    h|hi|high)    echo "high" ;;
+    x|xhigh)      echo "xhigh" ;;
+    *)            echo "" ;;
+  esac
+}
+
+usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$SELF"; }
+
+cmd_status() {
+  /usr/bin/python3 - "$PIN" "$SETTINGS" <<'PY'
+import json, sys
+pin = json.load(open(sys.argv[1]))
+s = json.load(open(sys.argv[2]))
+print(f"pinned  : model={pin.get('model')}  effortLevel={pin.get('effortLevel')}")
+print(f"settings: model={s.get('model')}  effortLevel={s.get('effortLevel')}")
+same = all(s.get(k) == pin.get(k) for k in ("model", "effortLevel"))
+print("状态    : " + ("一致 ✓" if same else "漂移（守护将还原）"))
+PY
+  if launchctl print "gui/$(id -u)/uk.jingxuan.model-pin-guard" >/dev/null 2>&1; then
+    echo "守护    : launchd 已加载 ✓"
+  else
+    echo "守护    : launchd 未加载 ✗（运行 install.sh）"
+  fi
+}
+
+cmd_pin() {
+  if [ $# -lt 1 ]; then
+    echo "用法: cs pin <model> [effort]" >&2
+    exit 1
+  fi
+  local model effort=""
+  model="$(model_alias "$1")"
+  if [ -z "$model" ]; then
+    model="$1"   # 别名表没有的按全名原样接受，如 claude-opus-4-8
+  fi
+  if [ $# -ge 2 ]; then
+    effort="$(effort_alias "$2")"
+    if [ -z "$effort" ]; then
+      echo "无效 effort: $2（可选 low/medium/high/xhigh）" >&2
+      exit 1
+    fi
+  fi
+  /usr/bin/python3 - "$PIN" "$SETTINGS" "$model" "$effort" <<'PY'
+import json, os, stat, sys, tempfile
+pin_path, settings_path, model, effort = sys.argv[1:5]
+
+def atomic_update(path, updates):
+    with open(path) as f:
+        data = json.load(f)
+    data.update(updates)
+    mode = stat.S_IMODE(os.stat(path).st_mode)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".pin-")
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+updates = {"model": model}
+if effort:
+    updates["effortLevel"] = effort
+atomic_update(pin_path, updates)      # 先改 pin，守护随后不会打架
+atomic_update(settings_path, updates)
+print(f"已钉住: {updates}")
+PY
+}
+
+# ---- 参数解析 ----
+if [ $# -ge 1 ]; then
+  case "$1" in
+    -h|--help|help) usage; exit 0 ;;
+    status)         cmd_status; exit 0 ;;
+    pin)            shift; cmd_pin "$@"; exit 0 ;;
+  esac
+fi
+
+MODEL=""
+EFFORT=""
+if [ $# -ge 1 ] && [ "${1:0:1}" != "-" ]; then
+  MODEL="$(model_alias "$1")"
+  if [ -z "$MODEL" ]; then
+    echo "未知模型别名: $1（cs help 查看）" >&2
+    exit 1
+  fi
+  shift
+  if [ $# -ge 1 ] && [ "${1:0:1}" != "-" ]; then
+    EFFORT="$(effort_alias "$1")"
+    if [ -n "$EFFORT" ]; then
+      shift   # 第二个参数不是 effort 就原样传给 claude
+    fi
+  fi
+fi
+
+CMD=(claude)
+if [ -n "$MODEL" ]; then
+  CMD+=(--model "$MODEL")
+fi
+if [ -n "$EFFORT" ]; then
+  CMD+=(--effort "$EFFORT")
+fi
+CMD+=("$@")
+
+if [ "${CS_ECHO:-}" = "1" ]; then
+  printf '%q ' "${CMD[@]}"
+  echo
+  exit 0
+fi
+exec "${CMD[@]}"
