@@ -1,55 +1,49 @@
 # model-switch
 
-Claude Code 模型 / effort 的"档位锁"：默认值钉死在 `pin.json`，所有切换只影响当前会话，新窗口永远从钉住的默认启动。
+Claude Code 的终端换挡面板——仿实体换挡杆的可点击 TUI，模型 / effort 切换**只影响当前会话**，新窗口永远从你的默认值启动。
 
-## 为什么需要
-
-Claude Code 里 `/model` 选 Enter（或直接 `/model opus` 这种带参数命令）会把选择写进 `~/.claude/settings.json` 的 `model` / `effortLevel`——于是新开的窗口"继承"了上一次的切换。本工具用一个 launchd 守护监视 settings.json，一旦这两个键偏离 `pin.json`，几秒内自动还原。由于 Claude Code 的 `model` 键只在会话启动时读一次（不热重载），还原不会干扰任何正在运行的会话。
-
-## 会话内切换（Claude Code 内置，无需本工具）
-
-| 操作 | 效果 |
-|---|---|
-| `Option+P`（或 `/model`）呼出 picker → 方向键选 → **按 `s`** | 仅本会话切换，不碰默认 |
-| picker 里按 Enter | 会写默认——有守护在，几秒后被还原 |
-| `Option+T` | 切 thinking，`Option+O` 切 fast mode |
-
-**习惯用 `s` 键确认，Enter 留给真想改默认的场合（但改默认请走 `cs pin`）。**
-
-## cs 启动器
-
-```bash
-cs            # 钉住的默认值启动（= 裸 claude）
-cs o          # opus（仅本会话）
-cs o h        # opus + high effort（仅本会话）
-cs s1m x -c   # sonnet[1m] + xhigh，继续上次对话；多余参数原样传给 claude
-cs pin f1m x  # 改默认：pin.json 与 settings.json 一起更新（唯一正规通道）
-cs status     # 钉住值 / settings 现值 / 守护状态
+```
+ ● M O D E L  S H I F T
+       1 HAIKU     3 SONNET-1M     5 FABLE       ╭──────────────────────────────────╮
+          ┃             ┃             ┃          │ OPUS                 ▰▰▱▱ MEDIUM │
+          ┣━━━━━━━━━━━━━╋━━━━━━━━━━━━━┫          │ 已切换 /effort medium · 默认未动 │
+          ┃             ◉             ┃          │ R档: DEFAULT/xhigh · 目标 %0     │
+      2 SONNET       4 OPUS       R DEFAULT      ╰──────────────────────────────────╯
+   EFFORT   L LOW    M MED    H HIGH    X XHIGH      P 快照      Q QUIT
 ```
 
-别名：模型 `f`=fable `o`=opus `s`=sonnet `h`=haiku `op`=opusplan，加 `1m` 后缀为 1M 上下文变体（`f1m` `o1m` `s1m`）；effort `l`=low `m`=medium `h`/`hi`=high `x`=xhigh。位置消歧：第一个参数是模型，第二个是 effort，所以 `cs h` 是 haiku、`cs o h` 是 opus+high。
+## 用法
+
+```bash
+cst    # 在 tmux 里 claude 所在 pane 运行：底部弹出换挡面板
+cst    # 在 tmux 外运行：新建 tmux 会话（claude + 面板）并接入
+```
+
+- **鼠标点击**任意档位 / effort 拨片换挡（需要 tmux `mouse on`，cst 会自动打开）。
+- 键盘：`1-5` 选模型，`l m h x` 选 effort，`r` 回 R 档（默认档位），`p` 刷新快照，`q` 关面板。
+- 面板高度可调：`CST_HEIGHT=10 cst`。
+- 改档位表：编辑 `bin/model_shift_tui.py` 顶部的 `GATE` / `EFFORTS` 常量。
+
+## 原理
+
+Claude Code 的 `/model <x>` 和 `/effort <x>` 命令切换会话的同时会把选择写进 `~/.claude/settings.json`（`model` / `effortLevel` 两键）——新窗口读它们，于是"继承"。面板每次换挡：
+
+1. 向 claude 所在 pane 注入命令（`tmux send-keys`，带 composer 验证与重试，防止 claude 重渲染时吞字）；
+2. 等命令生效后，把 settings.json 的两键**还原成面板启动时的快照**。
+
+净效果 = 当前会话换挡、默认值纹丝不动。还原是安全的：`model` 键只在会话启动时读一次，不热重载（验证于 Claude Code 2.1.200）。
+
+## 注意
+
+- 换挡前 composer 别留没发的草稿——注入会先 `C-u` 清行。
+- TUI 开着时若手动改了默认模型（如 `/model` 里按 Enter 想真的换默认），按 `p` 让面板把新默认认作 R 档，否则下次换挡会还原成旧快照。
+- 不用 tmux 时的替代：`/model` 选择器里按 **`s`**（"use this session only"）本来就是会话级切换；`claude --model opus --effort high` 启动也是会话级。面板的价值是可点击、一键、且防 `/model` 直接命令写默认。
 
 ## 安装 / 卸载
 
 ```bash
-./install.sh   # symlink cs 到 ~/.local/bin；生成并加载 launchd 守护（幂等，可重复跑）
+ln -sf "$PWD/bin/cst" ~/.local/bin/cst   # 安装（仓库自带 symlink 即此命令）
+rm ~/.local/bin/cst                       # 卸载；无守护进程、无 hook、无残留
 ```
 
-卸载：
-
-```bash
-launchctl bootout "gui/$(id -u)/uk.jingxuan.model-pin-guard"
-rm ~/Library/LaunchAgents/uk.jingxuan.model-pin-guard.plist ~/.local/bin/cs
-```
-
-## 运维
-
-- 守护还原日志：`logs/pin-guard.log`（每次还原记一行 old → new）；launchd 自身输出：`logs/pin-guard.launchd.log`。
-- 健康检查：`cs status`（显示 pin/settings 是否一致、launchd 是否加载）。
-- 验证守护：手动把 settings.json 的 `model` 改掉，几秒后应自动还原并出日志。
-
-## 已知局限
-
-- 守护是"读-改-写"整个 settings.json：若 Claude Code 恰好同一瞬间写入其他设置键，存在极小概率的丢失窗口（实测未遇到；还原仅发生在这两个键偏离时）。
-- `effortLevel` 是否热重载官方未明确：若某会话用 Enter 把 effort 设为默认后被守护还原，该会话当前 effort 有小概率被一并拽回——用 `s` 键切换则完全不受影响。
-- 机制验证于 Claude Code 2.1.200；大版本升级后若发现行为变化，先看 `.claude/CLAUDE.md` 的"机制依据"。
+依赖：tmux、python3（含 curses，macOS 自带即可）。

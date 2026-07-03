@@ -1,0 +1,28 @@
+#!/bin/bash
+# cst — 给 Claude Code 挂上可点击的换挡面板（tmux 分屏 TUI）
+#
+#   在 tmux 里、claude 所在 pane 中运行:  cst      → 底部弹出换挡面板
+#   在 tmux 外运行:                       cst      → 新建 tmux 会话(claude + 面板)并接入
+#
+# 面板操作: 鼠标点击换挡；键盘 1-7 选模型, l/m/h/x 选 effort, r 复位, p 刷新快照, q 退出
+set -euo pipefail
+
+SELF="$(readlink -f "$0")"
+PROJ="$(cd "$(dirname "$SELF")/.." && pwd)"
+TUI="$PROJ/bin/model_shift_tui.py"
+PANE_H="${CST_HEIGHT:-8}"
+
+if [ -n "${TMUX:-}" ]; then
+  TARGET="$(tmux display-message -p '#{pane_id}')"
+  tmux set-option -g mouse on >/dev/null 2>&1 || true
+  tmux split-window -v -l "$PANE_H" "python3 '$TUI' --target '$TARGET'"
+  tmux select-pane -t "$TARGET"
+else
+  SESS="cc-$$"
+  tmux new-session -d -s "$SESS" -c "$PWD" -x "$(tput cols)" -y "$(tput lines)" 'claude'
+  tmux set-option -t "$SESS" -g mouse on >/dev/null 2>&1 || true
+  TARGET="$(tmux display-message -t "$SESS" -p '#{pane_id}')"
+  tmux split-window -t "$SESS" -v -l "$PANE_H" "python3 '$TUI' --target '$TARGET'"
+  tmux select-pane -t "$TARGET"
+  exec tmux attach -t "$SESS"
+fi
