@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""model-shift TUI — 在 tmux 里给 Claude Code 一个可点击的换挡面板。
+"""model-shift TUI — 在 tmux 里给 Claude Code 一个纯鼠标点击的换挡面板。
 
-仿实体换挡杆：H 型拨杆（5 档模型 + R 复位）+ effort 拨片 + LCD 仪表屏。
-跑在 claude 所在 tmux 窗口的一个小分屏里，点击（或按键）换挡：
-把 /model <x> 或 /effort <x> 注入目标 pane，随后自动把
+仿实体换挡杆：H 型拨杆（5 档模型 + R 复位）+ effort 拨片 + 通栏 LCD 仪表屏。
+不绑定任何键盘按键，一切操作靠点击（左上 ● 关闭、↻ 刷新快照）。
+点击换挡：把 /model <x> 或 /effort <x> 注入目标 pane，随后自动把
 ~/.claude/settings.json 里被顺带改写的默认值还原成启动时的快照，
 从而做到「切换只影响当前会话，新窗口不继承」。
 """
@@ -23,7 +23,7 @@ import unicodedata
 
 SETTINGS = os.path.expanduser("~/.claude/settings.json")
 
-# H 型换挡拨杆：(按键, 档位标签, /model 值, 列, 排)  排: 0=上 1=下；R 档复位到快照
+# H 型换挡拨杆：(档位号, 档位标签, /model 值, 列, 排)  排: 0=上 1=下；R 档复位到快照
 GATE = [
     ("1", "HAIKU", "haiku", 0, 0),
     ("2", "SONNET", "sonnet", 0, 1),
@@ -33,20 +33,26 @@ GATE = [
     ("R", "DEFAULT", None, 2, 1),
 ]
 EFFORTS = [
-    ("l", "LOW", "low"),
-    ("m", "MED", "medium"),
-    ("h", "HIGH", "high"),
-    ("x", "XHIGH", "xhigh"),
+    ("LOW", "low"),
+    ("MED", "medium"),
+    ("HIGH", "high"),
+    ("XHIGH", "xhigh"),
 ]
 
 COL_W = 14          # 拨杆每列宽
 GATE_LEFT = 3       # 拨杆左缘
-LCD_LEFT = GATE_LEFT + COL_W * 3 + 4   # LCD 屏左缘
+LCD_LEFT = GATE_LEFT + COL_W * 3 + 4   # LCD 屏左缘（右缘随终端宽度伸展）
 
 
 def wlen(s):
     """显示宽度（CJK 宽字符算 2）。"""
     return sum(2 if unicodedata.east_asian_width(ch) in "WF" else 1 for ch in s)
+
+
+def wtrunc(s, w):
+    while s and wlen(s) > w:
+        s = s[:-1]
+    return s
 
 
 def tmux(*args):
@@ -100,7 +106,7 @@ class Shifter:
         self.cur_model = self.snap_model
         self.cur_effort = self.snap_effort
         self.busy = False
-        self.status = "就绪 · 点击换挡或按键 1-5 / l m h x / r"
+        self.status = "就绪 · 点击档位换挡"
         threading.Thread(target=self._run, daemon=True).start()
 
     def _set(self, **kw):
@@ -247,9 +253,12 @@ def draw(stdscr, sh, hitboxes):
     def center(col):
         return GATE_LEFT + col * COL_W + COL_W // 2
 
-    # ── 标题 ──
-    put(0, 1, "●", curses.color_pair(C_RED))
-    put(0, 3, "M O D E L  S H I F T", curses.A_BOLD | curses.color_pair(C_LABEL))
+    # ── 标题行：● 关闭 · ↻ 刷新快照（都是点击钮，无键盘） ──
+    put(0, 1, "●", curses.A_BOLD | curses.color_pair(C_RED))
+    hitboxes.append((0, 0, 2, ("quit", None)))
+    put(0, 4, "M O D E L  S H I F T", curses.A_BOLD | curses.color_pair(C_LABEL))
+    put(0, 27, "↻", curses.A_BOLD | curses.color_pair(C_DIM))
+    hitboxes.append((0, 26, 28, ("snap", None)))
 
     # ── H 型拨杆：y1 上标签 y2 上滑槽 y3 横杆 y4 下滑槽 y5 下标签 ──
     knob = knob_pos(cur_model, snap_model)
@@ -280,52 +289,51 @@ def draw(stdscr, sh, hitboxes):
         put(2 if row == 0 else 4, center(col), "◉",
             curses.A_BOLD | curses.color_pair(C_RED))
 
-    # ── LCD 仪表屏（宽度够才画）──
-    lcd_w = 46
-    if maxx >= LCD_LEFT + lcd_w:
-        x0 = LCD_LEFT
-        dim = curses.color_pair(C_DIM)
-        put(1, x0, "╭" + "─" * (lcd_w - 2) + "╮", dim)
-        for y in (2, 3, 4):
-            put(y, x0, "│", dim)
-            put(y, x0 + lcd_w - 1, "│", dim)
-        put(5, x0, "╰" + "─" * (lcd_w - 2) + "╯", dim)
-        name = gear_label(cur_model, snap_model)
-        put(2, x0 + 2, name, curses.A_BOLD | curses.color_pair(C_PURPLE))
-        seg = {"low": 1, "medium": 2, "high": 3, "xhigh": 4}.get(cur_effort or "", 0)
-        meter = "▰" * seg + "▱" * (4 - seg)
-        eff = f"{meter} {(cur_effort or '?').upper()}"
-        put(2, x0 + lcd_w - 2 - wlen(eff), eff, curses.color_pair(C_AMBER))
-        st = ("⣾⣽⣻⢿⡿⣟⣯⣷"[int(time.time() * 8) % 8] + " " if busy else "")
-        line2 = f"{st}{status}"
-        while wlen(line2) > lcd_w - 4:
-            line2 = line2[:-1]
-        put(3, x0 + 2, line2, curses.color_pair(C_AMBER))
-        line3 = f"R档: {gear_label(snap_model, snap_model)}/{snap_effort} · 目标 {sh.target}"
-        while wlen(line3) > lcd_w - 4:
-            line3 = line3[:-1]
-        put(4, x0 + 2, line3, dim)
-    else:
-        put(6, GATE_LEFT, ("⣾" if busy else "▸") + " " + status,
-            curses.color_pair(C_AMBER))
-
-    # ── effort 拨片 + 功能键 ──
+    # ── effort 拨片（y6，纯点击） ──
     y = 6
     put(y, GATE_LEFT, "EFFORT", curses.A_BOLD | curses.color_pair(C_LABEL))
     x = GATE_LEFT + 8
-    for key, label, value in EFFORTS:
-        txt = f" {key.upper()} {label} "
+    for label, value in EFFORTS:
+        txt = f" {label} "
         active = value == cur_effort
         attr = (curses.A_BOLD | curses.color_pair(C_AMBER) | curses.A_REVERSE
                 if active else curses.color_pair(C_LABEL))
         put(y, x, txt, attr)
         hitboxes.append((y, x, x + wlen(txt) - 1, ("effort", value)))
         x += wlen(txt) + 2
-    for key, label, action in (("p", "快照", ("snap", None)), ("q", "QUIT", ("quit", None))):
-        txt = f" {key.upper()} {label} "
-        put(y, x + 2, txt, curses.color_pair(C_DIM))
-        hitboxes.append((y, x + 2, x + 2 + wlen(txt) - 1, action))
-        x += wlen(txt) + 4
+
+    # ── LCD 仪表屏：从拨杆右侧一直铺到终端右缘 ──
+    x0, x1 = LCD_LEFT, maxx - 2
+    if x1 - x0 >= 32:
+        dim = curses.color_pair(C_DIM)
+        inner = x1 - x0 - 3   # 内容可用宽度
+        put(1, x0, "╭" + "─" * (x1 - x0 - 1) + "╮", dim)
+        for yy in (2, 3, 4):
+            put(yy, x0, "│", dim)
+            put(yy, x1, "│", dim)
+        put(5, x0, "╰" + "─" * (x1 - x0 - 1) + "╯", dim)
+
+        name = gear_label(cur_model, snap_model)
+        put(2, x0 + 2, wtrunc(name, inner - 14),
+            curses.A_BOLD | curses.color_pair(C_PURPLE))
+        seg = {"low": 1, "medium": 2, "high": 3, "xhigh": 4}.get(cur_effort or "", 0)
+        eff = "▰" * seg + "▱" * (4 - seg) + f" {(cur_effort or '?').upper()}"
+        put(2, x1 - wlen(eff) - 1, eff, curses.color_pair(C_AMBER))
+
+        st = ("⣾⣽⣻⢿⡿⣟⣯⣷"[int(time.time() * 8) % 8] + " " if busy else "")
+        put(3, x0 + 2, wtrunc(f"{st}{status}", inner), curses.color_pair(C_AMBER))
+
+        left3 = f"R档 {gear_label(snap_model, snap_model)} / {snap_effort}"
+        right3 = f"目标 {sh.target}"
+        put(4, x0 + 2, wtrunc(left3, inner - wlen(right3) - 2), dim)
+        put(4, x1 - wlen(right3) - 1, right3, dim)
+        # LCD 下沿与 effort 行对齐的通栏底线
+        put(6, x0, "─" * (x1 - x0 + 1), dim)
+    else:
+        put(6, GATE_LEFT + 60 if maxx > GATE_LEFT + 70 else 0, "", 0)
+        put(7 if maxy > 7 else 6, GATE_LEFT,
+            wtrunc(("⣾ " if busy else "▸ ") + status, maxx - GATE_LEFT - 2),
+            curses.color_pair(C_AMBER))
 
     stdscr.refresh()
 
@@ -334,29 +342,28 @@ def main(stdscr, target):
     curses.curs_set(0)
     init_colors()
     curses.mousemask(curses.ALL_MOUSE_EVENTS)
+    curses.mouseinterval(150)
+    # tmux 的 TERM=screen-256color 缺 XM 描述，ncurses 不一定替我们开鼠标上报；
+    # 手动开 X10 + 按钮事件模式（1002），坐标 ≤223 列，所有点击目标都在左侧安全区
+    os.write(sys.stdout.fileno(), b"\x1b[?1000h\x1b[?1002h")
     stdscr.timeout(150)  # 轮询刷新，让 worker 状态与 spinner 动起来
     stdscr.keypad(True)
 
     sh = Shifter(target)
     hitboxes = []
-    key_model = {k.lower(): v for k, _, v, _, _ in GATE if v is not None}
-    key_effort = {k: v for k, _, v in EFFORTS}
 
     while True:
         draw(stdscr, sh, hitboxes)
         try:
             c = stdscr.getch()
         except KeyboardInterrupt:
-            break
-        if c == -1:
-            continue
+            return
         if c == curses.KEY_MOUSE:
             try:
                 _, mx, my, _, bstate = curses.getmouse()
             except curses.error:
                 continue
-            if not bstate & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED
-                             | curses.BUTTON1_RELEASED):
+            if not bstate & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED):
                 continue
             for y, x1, x2, (kind, value) in hitboxes:
                 if my == y and x1 <= mx <= x2:
@@ -367,18 +374,7 @@ def main(stdscr, target):
                     else:
                         sh.shift(kind, value)
                     break
-            continue
-        if c in (ord("q"), ord("Q")):
-            return
-        ch = chr(c).lower() if 0 < c < 256 else ""
-        if ch in key_model:
-            sh.shift("model", key_model[ch])
-        elif ch in key_effort:
-            sh.shift("effort", key_effort[ch])
-        elif ch == "r":
-            sh.shift("reset")
-        elif ch == "p":
-            sh.resnapshot()
+        # 其余一律忽略：本面板不绑定任何键盘按键
 
 
 if __name__ == "__main__":
@@ -390,5 +386,5 @@ if __name__ == "__main__":
         sys.exit(f"目标 pane 不存在: {args.target}")
     try:
         curses.wrapper(main, args.target)
-    except KeyboardInterrupt:
-        pass
+    finally:
+        os.write(sys.stdout.fileno(), b"\x1b[?1002l\x1b[?1000l")
