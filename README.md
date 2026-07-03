@@ -1,61 +1,65 @@
 # model-switch
 
-Claude Code 的终端换挡面板——仿实体换挡杆的**纯鼠标点击** TUI，模型 / effort 切换**只影响当前会话**，新窗口永远从你的默认值启动。不绑定任何键盘按键。
+Claude Code HUD（statusline）里的**可点击换挡条**：点状态栏里的字换模型 / effort，只影响当前会话，新窗口永远从你的默认值启动。不占独立面板、不需要额外命令、不绑定任何键盘按键。
 
 ```
- ●  M O D E L  S H I F T   ↻
-       1 HAIKU     3 SONNET-1M     5 FABLE       ╭───────────────────────────────────────────────╮
-          ┃             ┃             ┃          │ OPUS                               ▰▰▰▱ HIGH  │
-          ┣━━━━━━━━━━━━━╋━━━━━━━━━━━━━┫          │ 已切换 /effort high · 默认未动                │
-          ┃             ◉             ┃          │ R档 DEFAULT / xhigh                   目标 %0 │
-      2 SONNET       4 OPUS       R DEFAULT      ╰───────────────────────────────────────────────╯
-   EFFORT   LOW    MED    HIGH    XHIGH          ─────────────────────────────────────────────────
+    MacBook
+  [Fable 5 ◕ xhigh] │ model-switch git:(master*)
+  Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
+  ⇧ HAIKU  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← 点这行
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
 ```
 
-LCD 仪表屏从拨杆右侧一直铺到终端右缘（宽屏不会留白），显示当前档位（紫）、effort 电量表（琥珀）、最近一次换挡结果、R 档内容与目标 pane。
+换挡条是 HUD 的一行，跟着 statusline 一起刷新；当前 model / effort 以琥珀色加粗高亮（读 statusline JSON 的 `.model.id` / `.effort.level`）。点 `DEFAULT` 回默认档（model + effort 一起复位）。
 
-## 用法
+## 三层架构
 
-```bash
-cst    # 在 tmux 里 claude 所在 pane 运行：底部弹出换挡面板
-cst    # 在 tmux 外运行：新建 tmux 会话（claude + 面板）并接入
-```
+| 层 | 位置 | 职责 |
+|---|---|---|
+| 显示 | `bin/hud-shift-line.sh`，由 `~/.claude/hud-with-host.sh` 末尾调用 | 渲染换挡条 + 高亮当前档 |
+| 点击 | `~/.tmux.conf` 的 `MouseDown1Pane` 绑定 | 点击行匹配 `⇧.*HAIKU.*XHIGH` 才拦截，其余点击原样放行（`select-pane` + `send-keys -M`）|
+| 执行 | `bin/hud-click.sh` → `bin/hud_click.py` | 按显示列定位 token → 注入 `/model` / `/effort`（验证+重试）→ 还原 settings 快照 |
 
-全部操作都是点击：
-
-| 点击 | 效果 |
-|---|---|
-| 档位标签（或滑槽格）| 当前会话切换模型，`◉` 钮移到该档 |
-| effort 拨片 LOW / MED / HIGH / XHIGH | 当前会话切换 effort |
-| `R DEFAULT` | 回默认档（模型 + effort 一起复位到快照）|
-| 左上 `●` | 关闭面板（不影响 claude）|
-| 标题旁 `↻` | 把当前 settings 重新认作 R 档快照 |
-
-- 面板高度：`CST_HEIGHT=10 cst`；改档位表：编辑 `bin/model_shift_tui.py` 顶部 `GATE` / `EFFORTS`。
-- 需要 tmux `mouse on`（cst 自动打开）。
+无守护进程、无轮询——只在点击瞬间运行一次。
 
 ## 原理
 
-Claude Code 的 `/model <x>` 和 `/effort <x>` 命令切换会话的同时会把选择写进 `~/.claude/settings.json`（`model` / `effortLevel` 两键）——新窗口读它们，于是"继承"。面板每次点击：
+Claude Code 的 `/model <x>` 和 `/effort <x>` 切换会话的同时会把选择写进 `~/.claude/settings.json`（`model` / `effortLevel`）——新窗口读它们，于是"继承"。每次点击：
 
-1. 向 claude 所在 pane 注入命令（`tmux send-keys`，带 composer 验证与重试：claude 重渲染窗口期会吞字，composer 行 `❯` 后是 U+00A0 需归一化比对）；
-2. 命令生效后，把 settings.json 的两键**还原成面板启动时的快照**。
+1. 快照 settings 两键（点击前的值 = 你的默认；并发点击用 `flock` 串行化，防止把上一次的泄漏误当默认）；
+2. `tmux send-keys` 注入命令：`C-u` 清行 → 输入 → capture 验证 composer（claude 重渲染会吞字；composer 行 `❯` 后是 U+00A0 需归一化）→ 回车，最多重试 4 次；
+3. 把 settings 两键还原成快照。
 
-净效果 = 当前会话换挡、默认值纹丝不动。还原是安全的：`model` 键只在会话启动时读一次，不热重载（验证于 Claude Code 2.1.200）。
+净效果 = 当前会话换挡、默认纹丝不动。还原安全性：`model` 键只在会话启动时读一次、不热重载（验证于 Claude Code 2.1.200）。
 
-鼠标可用性：tmux 内 `TERM=screen-256color` 的 terminfo 缺鼠标能力描述，curses 的 `mousemask()` 不一定真的开启终端鼠标上报——面板启动时手动发 `\e[?1000h\e[?1002h` 开启（X10 协议，坐标上限 223 列，所有点击目标都布置在左侧安全区内；右侧 LCD 纯显示）。
+## 前提与集成点
+
+前提：claude 跑在 tmux 里（任意会话 / 任意 socket——绑定把 `#{socket_path}` 传给处理器）、`mouse on`（已有）。裸终端里点击事件只进 claude 自己，外部拦不到，这是硬边界；届时用内置的 `/model` → 按 `s`（session only）。
+
+安装即两处（本机已接好；换机照抄）：
+
+`~/.claude/hud-with-host.sh` 末尾：
+
+```bash
+# model-switch 换挡条（可点击，需 claude 跑在 tmux 里；真源与说明见 ~/Build/model-switch）
+[ -x "$HOME/Build/model-switch/bin/hud-shift-line.sh" ] && \
+  printf '%s' "$input" | bash "$HOME/Build/model-switch/bin/hud-shift-line.sh"
+```
+
+`~/.tmux.conf`：
+
+```tmux
+# === model-switch：点击 claude HUD 换挡条切模型/effort（会话级，不改默认；真源见 ~/Build/model-switch）===
+bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*HAIKU.*XHIGH,#{mouse_line}}' 'run-shell -b "~/Build/model-switch/bin/hud-click.sh #{socket_path} #{pane_id} #{mouse_x} #{mouse_y}"' 'select-pane -t = ; send-keys -M'
+```
+
+卸载 = 删掉这两处，`tmux source-file ~/.tmux.conf`。无其它残留。
 
 ## 注意
 
 - 点击换挡会先 `C-u` 清行——claude 输入框里别留没发的草稿。
-- 面板开着时若真想改默认（settings 里的 model/effortLevel），改完点 `↻` 刷新快照，否则下次换挡会把旧默认写回去。
-- 不用 tmux 时的替代：`/model` 选择器里按 `s`（"use this session only"）是内置的会话级切换；`claude --model opus --effort high` 启动同理。
+- 换挡条文案（token 与 `⇧` 标记）和 tmux 绑定的正则、`hud_click.py` 的 `TOKENS` 三处耦合，改一处要同步另两处。
+- 刚切完模型立刻再点，注入偶尔要多重试一两轮（claude 重渲染窗口），点了没反应等一两秒即可；日志在 `logs/hud-click.log`。
+- 想换默认档：直接改 `~/.claude/settings.json` 的 `model`/`effortLevel`（或 `/model` 里按 Enter）——换挡条的 DEFAULT 永远指向点击瞬间 settings 里的值，无需刷新任何快照。
 
-## 安装 / 卸载
-
-```bash
-ln -sf "$PWD/bin/cst" ~/.local/bin/cst   # 安装
-rm ~/.local/bin/cst                       # 卸载；无守护进程、无 hook、无残留
-```
-
-依赖：tmux、python3（含 curses，macOS 自带即可）。
+依赖：tmux ≥3.1（用到 `m/r:` 正则与 `mouse_line`）、jq、python3（macOS 自带）。
