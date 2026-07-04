@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""model-switch 点击处理器——把 HUD 换挡条上的点击变成会话级换挡。
+"""ccshift click handler — turns a click on the statusline shift bar into a
+session-scoped model/effort switch.
 
-由 ~/.tmux.conf 的 MouseDown1Pane 绑定调用（经 bin/hud-click.sh），参数是
-点击的 pane 与 pane 内坐标。流程：
+Invoked by the tmux MouseDown1Pane binding (via bin/hud-click.sh) with the
+clicked pane and in-pane coordinates. Flow:
 
-1. capture 该 pane，取点击行文字，按显示列（CJK 宽字符=2）定位点到了哪个 token；
-2. 快照 ~/.claude/settings.json 的 model/effortLevel（点击前的值 = 用户默认）；
-3. 向 pane 注入 /model 或 /effort 命令（C-u 清行 → 输入 → 验证 composer → 回车，重试 3 次）；
-4. 把 settings.json 两键还原成快照 → 切换只影响当前会话，默认不动。
+1. Capture the pane, take the clicked line, and locate which token was hit
+   by display column (CJK wide chars count as 2).
+2. Snapshot model/effortLevel in ~/.claude/settings.json (the pre-click
+   values = the user's defaults).
+3. Inject the /model or /effort command into the pane (Ctrl-U to clear the
+   line, type, verify the composer, press Enter; retried a few times).
+4. Restore the two settings keys from the snapshot — the switch affects the
+   current session only, defaults stay untouched.
 
-并发点击用文件锁串行化，避免把上一次点击的泄漏值误当默认快照。
+Concurrent clicks are serialized with a file lock so a previous click's
+leaked values are never mistaken for defaults.
 """
 import argparse
 import datetime
@@ -25,9 +31,9 @@ import time
 import unicodedata
 
 SETTINGS = os.path.expanduser("~/.claude/settings.json")
-LOCK = os.path.expanduser("~/.cache/model-switch.lock")
+LOCK = os.path.expanduser("~/.cache/ccshift.lock")
 
-# 长 token 在前，避免 SONNET 抢了 SONNET·1M、HIGH 抢了 XHIGH
+# Longer tokens first, so SONNET doesn't shadow SONNET·1M, nor HIGH shadow XHIGH
 TOKENS = [
     ("SONNET·1M", ("model", "sonnet[1m]")),
     ("XHIGH", ("effort", "xhigh")),
@@ -49,7 +55,7 @@ def cw(ch):
 
 
 def token_at(line, col):
-    """点击列落在哪个 token 上（col 为显示列，0-based）。"""
+    """Which token the click landed on (col is a 0-based display column)."""
     starts = []
     c = 0
     for ch in line:
@@ -107,7 +113,8 @@ def restore_defaults(snap_model, snap_effort):
 
 
 def composer_line(pane):
-    """目标 pane 里当前 composer 行（最后一个 ❯ 开头的行；❯ 后是 U+00A0 需归一化）。"""
+    """Current composer line in the target pane (last line starting with ❯;
+    the char after ❯ is U+00A0 and must be normalized before comparing)."""
     r = tmux("capture-pane", "-t", pane, "-p")
     if r.returncode != 0:
         return None
@@ -117,7 +124,8 @@ def composer_line(pane):
 
 
 def send_command(pane, text):
-    """注入一条命令：清行 → 输入 → 验证 composer → 回车（claude 重渲染会吞字，必须验证重试）。"""
+    """Inject one command: clear line -> type -> verify composer -> Enter.
+    Claude Code re-renders can swallow keystrokes, hence verify + retry."""
     seen = []
     for _ in range(4):
         if tmux("send-keys", "-t", pane, "C-u").returncode != 0:
@@ -134,7 +142,7 @@ def send_command(pane, text):
             return True
         seen.append(line)
         time.sleep(0.6)
-    log(f"send_command 失败 text={text!r} 每次验证看到的 composer={seen!r}")
+    log(f"send_command failed text={text!r} composer_seen={seen!r}")
     return False
 
 
@@ -146,7 +154,7 @@ def log(msg):
 def main():
     global TMUX_SOCKET
     ap = argparse.ArgumentParser()
-    ap.add_argument("--socket", default=None, help="触发点击的 tmux server 的 socket_path")
+    ap.add_argument("--socket", default=None, help="socket_path of the tmux server that saw the click")
     ap.add_argument("--pane", required=True)
     ap.add_argument("--x", type=int, required=True)
     ap.add_argument("--y", type=int, required=True)
@@ -155,7 +163,7 @@ def main():
 
     os.makedirs(os.path.dirname(LOCK), exist_ok=True)
     lock_fd = os.open(LOCK, os.O_CREAT | os.O_RDWR)
-    fcntl.flock(lock_fd, fcntl.LOCK_EX)  # 串行化并发点击
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)  # serialize concurrent clicks
 
     r = tmux("capture-pane", "-t", args.pane, "-p")
     if r.returncode != 0:
@@ -175,7 +183,7 @@ def main():
         cmds = [f"/model {value}"]
     elif kind == "effort":
         cmds = [f"/effort {value}"]
-    else:  # reset → 回默认档
+    else:  # reset -> back to defaults
         cmds = []
         if snap_model:
             cmds.append(f"/model {snap_model}")
@@ -185,7 +193,7 @@ def main():
     ok = all(send_command(args.pane, c) for c in cmds)
     restore_defaults(snap_model, snap_effort)
     log(f"pane={args.pane} click=({args.x},{args.y}) {kind}={value} "
-        f"cmds={cmds} ok={ok} 默认已还原")
+        f"cmds={cmds} ok={ok} defaults_restored=true")
 
 
 if __name__ == "__main__":

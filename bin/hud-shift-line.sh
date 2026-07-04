@@ -1,8 +1,11 @@
 #!/bin/bash
-# claude statusline 追加行：换挡条（显示层）。
-# stdin = claude statusline JSON（可选），用于高亮当前 model / effort。
-# 点击层在 ~/.tmux.conf 的 MouseDown1Pane 绑定 → bin/hud-click.sh（点其它区域原样放行）。
-# 行内必须同时含 "⇧"、"HAIKU"、"XHIGH"——tmux 绑定用这个特征识别换挡条行，改文案要同步改绑定正则。
+# Appended line for the Claude Code statusline: the shift bar (display layer).
+# stdin = statusline JSON (optional), used to highlight the current model/effort.
+# The click layer is the MouseDown1Pane binding in ~/.tmux.conf -> bin/hud-click.sh
+# (clicks anywhere else pass through untouched).
+# The line must contain "⇧", "HAIKU" and "XHIGH" together — the tmux binding uses
+# that signature to recognize the shift bar; change the labels and you must update
+# the binding regex too.
 
 input=$(cat 2>/dev/null || true)
 
