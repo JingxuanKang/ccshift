@@ -1,1 +1,4 @@
 logs/
+# 本地私有文件，不随仓库分发
+index.html
+.claude/
