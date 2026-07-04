@@ -131,8 +131,19 @@ bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*HAIKU.*XHIGH,#{mouse_line}}' 
 
 ## 使用须知（费用与缓存）
 
-- **会话中途切模型 = prompt cache 作废**。Anthropic 的 prompt cache 按模型隔离：切到另一个模型后，已有上下文对它是全新输入，下一条回复要整段重读（首字变慢、按无缓存价计费；上下文越长越明显）。**这是 Claude Code / Anthropic API 的行为，与本工具无关**——用内置 `/model` 菜单切完全一样。短时间内切回原模型，若缓存未过期（TTL 约 5 分钟）可再命中。
-- **大上下文护栏弹窗**：上下文超过 200k 的会话上切 model / effort 时，Claude Code 会弹 usage-credits 确认弹窗（"Kept model as …"）。本工具**刻意不自动确认**——此时切换意味着缓存作废 + 长上下文计费，该不该切由你手动按，这是护栏不是 bug。
+**会话中途切档 = prompt cache 作废**。Anthropic 的 prompt cache 按前缀分三层（`tools → system → messages`），失效是分层的：
+
+| 改动 | tools 缓存 | system 缓存 | messages 缓存 |
+|---|---|---|---|
+| 换模型 / 改工具列表 | ❌ | ❌ | ❌ |
+| 改 system prompt | 保留 | ❌ | ❌ |
+| 改 thinking / effort 这类推理参数 | 保留 | 保留 | ❌ |
+
+长会话里绝大部分 token 都堆在 messages（对话历史 + 工具输出），所以**换模型和换 effort 的实际效果都 ≈ 整段上下文按无缓存价重读一遍**（首字变慢；上下文越长越贵）。**这是 Claude Code / Anthropic API 的行为，与本工具无关**——用内置 `/model` / `/effort` 切完全一样。短时间内切回原模型，若缓存未过期（TTL 约 5 分钟）可再命中。
+
+其余两点：
+
+- **大上下文护栏弹窗**：上下文超过 200k 的会话上切 model / effort 时，Claude Code 会弹 usage-credits 确认弹窗（确认才切；取消则显示 "Kept model as … / Kept effort level as …"）。本工具**刻意不自动确认**——此时切换意味着缓存作废 + 长上下文计费，该不该切由你手动按，这是护栏不是 bug。
 - 点击换挡会先 `C-u` 清空输入行——claude 输入框里别留没发的草稿。
 
 ## 自定义
