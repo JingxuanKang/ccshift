@@ -37,7 +37,7 @@ LOCK = os.path.expanduser("~/.cache/ccshift.lock")
 TOKENS = [
     ("SONNET·1M", ("model", "sonnet[1m]")),
     ("XHIGH", ("effort", "xhigh")),
-    ("HAIKU", ("model", "haiku")),
+    ("GROK", ("model", "xai/grok-4.5")),
     ("SONNET", ("model", "sonnet")),
     ("OPUS", ("model", "opus")),
     ("FABLE", ("model", "fable")),

@@ -7,7 +7,7 @@ A clickable **model / effort shift bar** in the Claude Code statusline. Click a 
 ```
   [Fable 5 ◕ xhigh] │ my-project git:(main)
   Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
-  ⇧ HAIKU  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← click this line
+  ⇧ GROK  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← click this line
 ```
 
 The current model / effort is highlighted in bold amber. Click `DEFAULT` to reset both back to your defaults in one click.
@@ -57,7 +57,7 @@ Re-run `./install.sh` any time (after `git pull`, or after moving the repo) — 
 | Layer | Where | Job |
 |---|---|---|
 | Display | `bin/hud-shift-line.sh` | Renders the bar as an extra statusline line; highlights the current model/effort from the statusline JSON |
-| Click | `MouseDown1Pane` binding in `~/.tmux.conf` | Intercepts clicks only on lines matching `⇧.*HAIKU.*XHIGH`; every other click passes through untouched |
+| Click | `MouseDown1Pane` binding in `~/.tmux.conf` | Intercepts clicks only on lines matching `⇧.*GROK.*XHIGH`; every other click passes through untouched |
 | Execute | `bin/hud-click.sh` → `bin/hud_click.py` | Locates the clicked token by display column → snapshots settings → injects the command (clear line → type → verify composer → Enter, retried) → restores the snapshot |
 
 Restore safety: `settings.json`'s `model` key is read once at session startup and never hot-reloaded (verified on Claude Code 2.1.200), so restoring it after a click never affects running sessions. Concurrent clicks are serialized with `flock`. The `#{socket_path}` passed by the binding means it works on **any tmux server/socket**, not just the default one.
@@ -99,7 +99,7 @@ printf '%s' "$input" | bash /path/to/ccshift/bin/hud-shift-line.sh
 
 ```tmux
 set -g mouse on
-bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*HAIKU.*XHIGH,#{mouse_line}}' \
+bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
   'run-shell -b "/path/to/ccshift/bin/hud-click.sh #{socket_path} #{pane_id} #{mouse_x} #{mouse_y}"' \
   'select-pane -t = ; send-keys -M'
 ```
@@ -110,7 +110,7 @@ The token table is coupled in **three places** — change one, change all three,
 
 1. `bin/hud-shift-line.sh` — the bar's labels;
 2. the `TOKENS` table in `bin/hud_click.py` — label → `/model` / `/effort` argument mapping (**longer tokens must come first**: `SONNET·1M` before `SONNET`, `XHIGH` before `HIGH`);
-3. the regex `⇧.*HAIKU.*XHIGH` in the tmux binding — the signature that identifies the bar's line.
+3. the regex `⇧.*GROK.*XHIGH` in the tmux binding — the signature that identifies the bar's line.
 
 When the Claude Code model lineup changes (new tiers, renames), update those three places.
 

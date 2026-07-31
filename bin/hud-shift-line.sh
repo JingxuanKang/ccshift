@@ -3,7 +3,7 @@
 # stdin = statusline JSON (optional), used to highlight the current model/effort.
 # The click layer is the MouseDown1Pane binding in ~/.tmux.conf -> bin/hud-click.sh
 # (clicks anywhere else pass through untouched).
-# The line must contain "⇧", "HAIKU" and "XHIGH" together — the tmux binding uses
+# The line must contain "⇧", "GROK" and "XHIGH" together — the tmux binding uses
 # that signature to recognize the shift bar; change the labels and you must update
 # the binding regex too.
 
@@ -18,7 +18,7 @@ fi
 
 cur=""
 case "$id" in
-  *haiku*)         cur="HAIKU" ;;
+  *grok*)          cur="GROK" ;;
   *sonnet*"[1m]"*) cur="SONNET·1M" ;;
   *sonnet*)        cur="SONNET" ;;
   *opus*)          cur="OPUS" ;;
@@ -48,6 +48,6 @@ tok() {
 
 printf '%s⇧%s %s  %s  %s  %s  %s  %s %s│%s %s  %s  %s  %s\n' \
   "$MARK" "$R" \
-  "$(tok HAIKU)" "$(tok SONNET)" "$(tok SONNET·1M)" "$(tok OPUS)" "$(tok FABLE)" "$(tok DEFAULT)" \
+  "$(tok GROK)" "$(tok SONNET)" "$(tok SONNET·1M)" "$(tok OPUS)" "$(tok FABLE)" "$(tok DEFAULT)" \
   "$SEP" "$R" \
   "$(tok LOW)" "$(tok MED)" "$(tok HIGH)" "$(tok XHIGH)"

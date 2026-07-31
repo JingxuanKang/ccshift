@@ -7,7 +7,7 @@ Claude Code statusline 里的**可点击换挡条**：鼠标点状态栏里的�
 ```
   [Fable 5 ◕ xhigh] │ my-project git:(main)
   Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
-  ⇧ HAIKU  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← 点这行
+  ⇧ GROK  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← 点这行
 ```
 
 当前 model / effort 以琥珀色加粗高亮。点 `DEFAULT` 一键回默认档（model + effort 一起复位）。
@@ -57,7 +57,7 @@ cd ccshift && ./install.sh
 | 层 | 位置 | 职责 |
 |---|---|---|
 | 显示 | `bin/hud-shift-line.sh` | 作为 statusline 的追加行渲染换挡条；从 statusline JSON 高亮当前档 |
-| 点击 | `~/.tmux.conf` 的 `MouseDown1Pane` 绑定 | 只拦截匹配 `⇧.*HAIKU.*XHIGH` 的行，其余一切点击原样放行 |
+| 点击 | `~/.tmux.conf` 的 `MouseDown1Pane` 绑定 | 只拦截匹配 `⇧.*GROK.*XHIGH` 的行，其余一切点击原样放行 |
 | 执行 | `bin/hud-click.sh` → `bin/hud_click.py` | 按显示列定位 token → 快照 settings → 注入命令（清行→输入→验证 composer→回车，带重试）→ 还原快照 |
 
 还原的安全性依据：`settings.json` 的 `model` 键只在会话启动时读一次、不热重载（验证于 Claude Code 2.1.200），点击后还原不影响任何运行中的会话。并发点击用 `flock` 串行化。绑定传入 `#{socket_path}`，所以在**任意 tmux server / socket** 上都能工作。
@@ -99,7 +99,7 @@ printf '%s' "$input" | bash /路径/ccshift/bin/hud-shift-line.sh
 
 ```tmux
 set -g mouse on
-bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*HAIKU.*XHIGH,#{mouse_line}}' \
+bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
   'run-shell -b "/路径/ccshift/bin/hud-click.sh #{socket_path} #{pane_id} #{mouse_x} #{mouse_y}"' \
   'select-pane -t = ; send-keys -M'
 ```
@@ -110,7 +110,7 @@ bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*HAIKU.*XHIGH,#{mouse_line}}' 
 
 1. `bin/hud-shift-line.sh` —— 换挡条文案；
 2. `bin/hud_click.py` 的 `TOKENS` 表 —— token → `/model` / `/effort` 参数映射（**长 token 必须排在前面**：`SONNET·1M` 先于 `SONNET`，`XHIGH` 先于 `HIGH`）；
-3. tmux 绑定里的正则 `⇧.*HAIKU.*XHIGH` —— 识别换挡条行的特征。
+3. tmux 绑定里的正则 `⇧.*GROK.*XHIGH` —— 识别换挡条行的特征。
 
 未来 Claude Code 模型阵容变了（新档位 / 改名），照这三处改即可。
 
