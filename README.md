@@ -7,10 +7,10 @@ A clickable **model / effort shift bar** in the Claude Code statusline. Click a 
 ```
   [Fable 5 ◕ xhigh] │ my-project git:(main)
   Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
-  ⇧ GROK  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← click this line
+  ⇧ GROK  GEMINI  GPT  OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH   ← click this line
 ```
 
-The current model / effort is highlighted in bold amber. Click `DEFAULT` to reset both back to your defaults in one click.
+The current model / effort is highlighted in bold amber.
 
 No daemon, no polling, no keybindings — code only runs at the moment you click.
 
@@ -109,7 +109,7 @@ bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
 The token table is coupled in **three places** — change one, change all three, or click targeting breaks:
 
 1. `bin/hud-shift-line.sh` — the bar's labels;
-2. the `TOKENS` table in `bin/hud_click.py` — label → `/model` / `/effort` argument mapping (**longer tokens must come first**: `SONNET·1M` before `SONNET`, `XHIGH` before `HIGH`);
+2. the `TOKENS` table in `bin/hud_click.py` — label → `/model` / `/effort` argument mapping (**longer tokens must come first**: `OPUS4.8` before `OPUS`, `XHIGH` before `HIGH`);
 3. the regex `⇧.*GROK.*XHIGH` in the tmux binding — the signature that identifies the bar's line.
 
 When the Claude Code model lineup changes (new tiers, renames), update those three places.

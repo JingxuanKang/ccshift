@@ -33,15 +33,15 @@ import unicodedata
 SETTINGS = os.path.expanduser("~/.claude/settings.json")
 LOCK = os.path.expanduser("~/.cache/ccshift.lock")
 
-# Longer tokens first, so SONNET doesn't shadow SONNET·1M, nor HIGH shadow XHIGH
+# Longer tokens first, so OPUS doesn't shadow OPUS4.8, nor HIGH shadow XHIGH
 TOKENS = [
-    ("SONNET·1M", ("model", "sonnet[1m]")),
+    ("OPUS4.8", ("model", "anthropic/claude-opus-4-8[1m]")),
     ("XHIGH", ("effort", "xhigh")),
     ("GROK", ("model", "xai/grok-4.5")),
-    ("SONNET", ("model", "sonnet")),
+    ("GEMINI", ("model", "google-antigravity/gemini-3.1-pro[1m]")),
+    ("GPT", ("model", "sub2api/gpt-5.6-sol")),
     ("OPUS", ("model", "opus")),
     ("FABLE", ("model", "fable")),
-    ("DEFAULT", ("reset", None)),
     ("LOW", ("effort", "low")),
     ("MED", ("effort", "medium")),
     ("HIGH", ("effort", "high")),
@@ -179,16 +179,7 @@ def main():
     snap = read_settings() or {}
     snap_model, snap_effort = snap.get("model"), snap.get("effortLevel")
 
-    if kind == "model":
-        cmds = [f"/model {value}"]
-    elif kind == "effort":
-        cmds = [f"/effort {value}"]
-    else:  # reset -> back to defaults
-        cmds = []
-        if snap_model:
-            cmds.append(f"/model {snap_model}")
-        if snap_effort:
-            cmds.append(f"/effort {snap_effort}")
+    cmds = [f"/model {value}"] if kind == "model" else [f"/effort {value}"]
 
     ok = all(send_command(args.pane, c) for c in cmds)
     restore_defaults(snap_model, snap_effort)

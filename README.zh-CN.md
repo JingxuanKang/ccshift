@@ -7,10 +7,10 @@ Claude Code statusline 里的**可点击换挡条**：鼠标点状态栏里的�
 ```
   [Fable 5 ◕ xhigh] │ my-project git:(main)
   Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
-  ⇧ GROK  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH   ← 点这行
+  ⇧ GROK  GEMINI  GPT  OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH   ← 点这行
 ```
 
-当前 model / effort 以琥珀色加粗高亮。点 `DEFAULT` 一键回默认档（model + effort 一起复位）。
+当前 model / effort 以琥珀色加粗高亮。
 
 无守护进程、无轮询、无键盘绑定——只在点击的瞬间运行一次。
 
@@ -109,7 +109,7 @@ bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
 档位表在三处**强耦合**，改任何一处必须同步另两处，否则点击定位错乱：
 
 1. `bin/hud-shift-line.sh` —— 换挡条文案；
-2. `bin/hud_click.py` 的 `TOKENS` 表 —— token → `/model` / `/effort` 参数映射（**长 token 必须排在前面**：`SONNET·1M` 先于 `SONNET`，`XHIGH` 先于 `HIGH`）；
+2. `bin/hud_click.py` 的 `TOKENS` 表 —— token → `/model` / `/effort` 参数映射（**长 token 必须排在前面**：`OPUS4.8` 先于 `OPUS`，`XHIGH` 先于 `HIGH`）；
 3. tmux 绑定里的正则 `⇧.*GROK.*XHIGH` —— 识别换挡条行的特征。
 
 未来 Claude Code 模型阵容变了（新档位 / 改名），照这三处改即可。

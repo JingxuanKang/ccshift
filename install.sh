@@ -168,8 +168,8 @@ install() {
   cat <<'EOF'
 
 Done. Open Claude Code inside tmux and the shift bar appears in the statusline:
-  ⇧ GROK  SONNET  SONNET·1M  OPUS  FABLE  DEFAULT │ LOW  MED  HIGH  XHIGH
-Click a token to switch this session; DEFAULT restores your defaults.
+  ⇧ GROK  GEMINI  GPT  OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH
+Click a token to switch this session's model or effort.
 Uninstall anytime with: ./install.sh --uninstall
 EOF
 }

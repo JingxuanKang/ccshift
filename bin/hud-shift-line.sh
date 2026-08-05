@@ -5,7 +5,7 @@
 # (clicks anywhere else pass through untouched).
 # The line must contain "⇧", "GROK" and "XHIGH" together — the tmux binding uses
 # that signature to recognize the shift bar; change the labels and you must update
-# the binding regex too.
+# the binding regex too. Labels here must stay in sync with TOKENS in hud_click.py.
 
 input=$(cat 2>/dev/null || true)
 
@@ -18,11 +18,12 @@ fi
 
 cur=""
 case "$id" in
-  *grok*)          cur="GROK" ;;
-  *sonnet*"[1m]"*) cur="SONNET·1M" ;;
-  *sonnet*)        cur="SONNET" ;;
-  *opus*)          cur="OPUS" ;;
-  *fable*)         cur="FABLE" ;;
+  *grok*)      cur="GROK" ;;
+  *gemini*)    cur="GEMINI" ;;
+  *gpt*)       cur="GPT" ;;
+  *opus-4-8*)  cur="OPUS4.8" ;;
+  *opus*)      cur="OPUS" ;;
+  *fable*)     cur="FABLE" ;;
 esac
 cure=""
 case "$eff" in
@@ -48,6 +49,6 @@ tok() {
 
 printf '%s⇧%s %s  %s  %s  %s  %s  %s %s│%s %s  %s  %s  %s\n' \
   "$MARK" "$R" \
-  "$(tok GROK)" "$(tok SONNET)" "$(tok SONNET·1M)" "$(tok OPUS)" "$(tok FABLE)" "$(tok DEFAULT)" \
+  "$(tok GROK)" "$(tok GEMINI)" "$(tok GPT)" "$(tok OPUS)" "$(tok OPUS4.8)" "$(tok FABLE)" \
   "$SEP" "$R" \
   "$(tok LOW)" "$(tok MED)" "$(tok HIGH)" "$(tok XHIGH)"
