@@ -38,7 +38,7 @@ TOKENS = [
     ("OPUS4.8", ("model", "anthropic/claude-opus-4-8[1m]")),
     ("XHIGH", ("effort", "xhigh")),
     ("GROK", ("model", "xai/grok-4.5")),
-    ("GEMINI", ("model", "google-antigravity/gemini-3.1-pro[1m]")),
+    ("GEMINI", ("model", "google-antigravity/gemini-3.6-flash[1m]")),
     ("GPT", ("model", "sub2api/gpt-5.6-sol")),
     ("OPUS", ("model", "opus")),
     ("FABLE", ("model", "fable")),
