@@ -45,12 +45,40 @@ cd ccshift && ./install.sh
 | 依赖 | 必需性 | 说明 |
 |---|---|---|
 | Claude Code | 必需 | — |
-| tmux ≥ 3.1 + `mouse on` | **仅点击功能必需** | 绑定用了 `#{m/r:…}` 正则格式（tmux 3.1+）；`mouse on` 安装器会设置 |
+| tmux ≥ 3.1 + `mouse on` | **仅点击功能必需** | 绑定用了 `#{m/r:…}` 正则格式（tmux 3.1+）；`mouse on` 安装器会设置。**目前只有 tmux 能提供点击层**，见下方边界 |
 | python3 | 仅点击功能必需 | 点击处理器；系统自带即可，无第三方包 |
 | jq | 可选 | 高亮当前档；没有 jq 换挡条照常显示，只是不高亮 |
 | claude-hud | **不需要** | 只是常见邻居：换挡条可以追加在任何 statusline 后面，也可以单独用 |
 
-**边界说清楚**：换挡条在任何终端里都能**显示**，但**点击**必需 Claude Code 跑在 tmux 里——裸终端里鼠标事件直接进应用，外部程序拦不到，这是硬边界。不用 tmux 时换挡条退化为只读仪表，切模型请用内置 `/model`（菜单里按 `s` 为 session-only）。
+**边界说清楚**：换挡条在任何终端、任何 multiplexer 里都能**显示**——它只是 statusline 多打印的一行，跟宿主无关。但**点击**要求宿主满足一个很窄的条件：**能拦截 pane 内的鼠标点击，并把点击坐标交给一个外部 shell 命令**。
+
+目前只有 tmux 有这个口子（`bind-key -n MouseDown1Pane` + `#{mouse_x} #{mouse_y}`）。裸终端里鼠标事件直接进应用，外部拦不到；**其它 multiplexer 即使能拦截鼠标，也普遍不把坐标暴露给外部命令**，同样点不了。
+
+宿主不满足条件时，换挡条**退化为只读仪表**：高亮照常跟随当前档，只是点不动。此时切档用内置 `/model`（菜单里按 `s` = 仅本会话）和 `/effort`。
+
+> 为什么不用键盘绑定兜底？**「不加键盘绑定、不做独立面板」是本项目的设计红线**——ccshift 要的就是「HUD 里点一下」这一个交互，退化时宁可只读，也不长出第二套操作方式。
+
+<details>
+<summary>已知宿主兼容性（2026-08 实测）</summary>
+
+| 宿主 | 显示 | 点击 | 说明 |
+|---|---|---|---|
+| tmux ≥ 3.1 | ✅ | ✅ | 唯一完整支持 |
+| tmux < 3.1 | ✅ | ❌ | 缺 `#{m/r:…}` 正则格式 |
+| [Herdr](https://herdr.dev) 0.8.0 | ✅ | ❌ | 见下 |
+| 裸终端（Ghostty / iTerm / …） | ✅ | ❌ | 鼠标事件直达 claude，外部无法拦截 |
+
+**Herdr 细节**（换 multiplexer 时最常撞的一个）：它的自定义命令 `[[keys.command]]` 只接**键盘**绑定语法（`prefix+x` / `ctrl+letter` / 功能键），没有鼠标事件绑定，也没有把点击坐标传给外部脚本的口子——所以点击层无法移植，这不是配置问题。
+
+不过 Herdr 把本项目**执行层**依赖的两个 tmux 原语都提供了，而且更省事：
+
+| ccshift 用的 tmux | Herdr 等价 |
+|---|---|
+| `tmux capture-pane -p` | `herdr pane read <pane-id> --source visible` |
+| `hud_click.py` 的 `send_command()`（C-u 清行 → 逐字输入 → 验证 composer → 回车 → ≤4 次重试） | `herdr agent prompt <pane-id> "/model opus"` —— 原子提交文本 + Enter，尊重 bracketed-paste |
+
+也就是说：**若 Herdr 将来支持鼠标事件绑定并传坐标，点击层可以直接移植，且执行层能大幅简化**（`hud_click.py` 最脆的重试逻辑可整段删除）。在那之前，Herdr 下按上面的只读仪表用法。
+</details>
 
 ## 工作原理（三层）
 
@@ -117,6 +145,17 @@ bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
 ## 验证 / 排障
 
 在 tmux 里开一个 Claude Code 会话，点一个别的模型档位：输入框自动出现 `/model <x>` 并回车，高亮跳到新档，而 `~/.claude/settings.json` 里仍是你的默认值。点击日志在 `logs/hud-click.log`。
+
+**点了没反应？** 先分清是哪一层坏了：
+
+```bash
+echo "$TMUX"                                   # 空 = 没跑在 tmux 里 → 点击层不存在，见上方边界表
+tmux show -g mouse                             # 应为 mouse on
+grep -c 'MouseDown1Pane' ~/.tmux.conf          # 应 ≥ 1；改完 conf 记得 tmux source-file
+tail ~/Build/ccshift/logs/hud-click.log        # 有行 = 点击已被拦到，问题在执行层
+```
+
+换挡条**还在显示、只是点不动**，通常意味着换了宿主（比如从 tmux 换到 Herdr 或裸终端）——显示层与宿主无关，所以看起来一切正常。这不是 bug，是上方边界表里的已知限制。
 
 ## License
 

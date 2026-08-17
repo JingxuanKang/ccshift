@@ -45,12 +45,40 @@ Re-run `./install.sh` any time (after `git pull`, or after moving the repo) — 
 | Dependency | Needed for | Notes |
 |---|---|---|
 | Claude Code | everything | — |
-| tmux ≥ 3.1 with `mouse on` | **clicking only** | The binding uses the `#{m/r:…}` regex format (tmux 3.1+). The installer sets `mouse on`. |
+| tmux ≥ 3.1 with `mouse on` | **clicking only** | The binding uses the `#{m/r:…}` regex format (tmux 3.1+). The installer sets `mouse on`. **tmux is currently the only host that can provide the click layer** — see the boundary below |
 | python3 | clicking only | Click handler; system python3 is fine, no packages |
 | jq | optional | Highlights the current model/effort; without it the bar still renders, just not highlighted |
 | claude-hud | **not required** | Just a common neighbor — the bar appends to any statusline, or stands alone |
 
-**The boundary, stated plainly:** the bar *displays* in any terminal, but *clicking* requires Claude Code to be running inside tmux — in a bare terminal, mouse events go straight to the app and nothing outside can intercept them. Without tmux the bar degrades to a read-only indicator; switch with the built-in `/model` (press `s` for session-only) instead.
+**The boundary, stated plainly:** the bar *displays* in any terminal and under any multiplexer — it is just one extra line printed by the statusline, independent of the host. But *clicking* requires the host to satisfy a narrow condition: **it must intercept mouse clicks inside the pane and hand the click coordinates to an external shell command.**
+
+Only tmux offers that hook today (`bind-key -n MouseDown1Pane` plus `#{mouse_x} #{mouse_y}`). In a bare terminal, mouse events go straight to the app and nothing outside can intercept them; **other multiplexers generally capture the mouse but do not expose coordinates to external commands**, so they cannot click either.
+
+When the host does not qualify, the bar **degrades to a read-only gauge**: the highlight still tracks the current model/effort, it just is not clickable. Switch with the built-in `/model` (press `s` for session-only) and `/effort`.
+
+> Why no keyboard-binding fallback? **"No keyboard bindings, no separate panel" is a design red line for this project** — ccshift exists to provide exactly one interaction, a click inside the HUD. When that is unavailable it stays read-only rather than growing a second way to operate it.
+
+<details>
+<summary>Known host compatibility (verified 2026-08)</summary>
+
+| Host | Displays | Clicks | Notes |
+|---|---|---|---|
+| tmux ≥ 3.1 | ✅ | ✅ | The only fully supported host |
+| tmux < 3.1 | ✅ | ❌ | Lacks the `#{m/r:…}` regex format |
+| [Herdr](https://herdr.dev) 0.8.0 | ✅ | ❌ | See below |
+| Bare terminal (Ghostty / iTerm / …) | ✅ | ❌ | Mouse events reach claude directly; nothing outside can intercept |
+
+**Herdr specifics** (the most common surprise when switching multiplexers): its custom-command hook `[[keys.command]]` accepts **keyboard** binding syntax only (`prefix+x` / `ctrl+letter` / function keys). There is no mouse-event binding and no way to pass click coordinates to an external script, so the click layer cannot be ported. This is a capability gap, not a misconfiguration.
+
+Herdr does, however, provide both tmux primitives this project's **execution layer** relies on, and more conveniently:
+
+| What ccshift uses tmux for | Herdr equivalent |
+|---|---|
+| `tmux capture-pane -p` | `herdr pane read <pane-id> --source visible` |
+| `send_command()` in `hud_click.py` (C-u clear → type → verify composer → Enter → up to 4 retries) | `herdr agent prompt <pane-id> "/model opus"` — atomically submits text plus Enter, honoring bracketed-paste |
+
+So: **if Herdr ever gains mouse-event bindings with coordinates, the click layer ports directly and the execution layer gets considerably simpler** (the fragile retry loop in `hud_click.py` could be deleted outright). Until then, use the read-only gauge behavior described above under Herdr.
+</details>
 
 ## How it works
 
@@ -117,6 +145,17 @@ When the Claude Code model lineup changes (new tiers, renames), update those thr
 ## Verify / debug
 
 Open a Claude Code session inside tmux and click a different model token: the composer types `/model <x>` and submits, the highlight jumps, and `~/.claude/settings.json` still holds your default. Click logs are in `logs/hud-click.log`.
+
+**Clicks do nothing?** Narrow down which layer is broken:
+
+```bash
+echo "$TMUX"                                   # empty = not inside tmux → no click layer, see the boundary above
+tmux show -g mouse                             # expect: mouse on
+grep -c 'MouseDown1Pane' ~/.tmux.conf          # expect ≥ 1; run tmux source-file after editing the conf
+tail ~/Build/ccshift/logs/hud-click.log        # any lines = the click was intercepted, so the problem is in the execution layer
+```
+
+A bar that **still renders but no longer responds to clicks** usually means the host changed (tmux → Herdr, or tmux → bare terminal). The display layer is host-independent, so everything looks normal. That is the known limitation in the compatibility table above, not a bug.
 
 ## License
 
