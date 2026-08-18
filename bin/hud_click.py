@@ -35,13 +35,18 @@ LOCK = os.path.expanduser("~/.cache/ccshift.lock")
 
 # Longer tokens first, so OPUS doesn't shadow OPUS4.8, nor HIGH shadow XHIGH
 TOKENS = [
-    ("OPUS4.8", ("model", "anthropic/claude-opus-4-8[1m]")),
+    # Claude models go direct, unprefixed. Routing them through the cpa lane is
+    # pointless (same Anthropic subscription, one extra hop) and impossible
+    # anyway: codexwire drops lane models whose owned_by is "anthropic", so
+    # cpa/claude-* never reaches Claude Code's model list at all.
+    # Everything else has no direct route and must go through a lane.
+    ("OPUS4.8", ("model", "claude-opus-4-8[1m]")),
     ("XHIGH", ("effort", "xhigh")),
-    ("GROK", ("model", "xai/grok-4.5")),
-    ("GEMINI", ("model", "google-antigravity/gemini-3.6-flash[1m]")),
+    ("GROK", ("model", "cpa/grok-4.6")),
+    ("GEMINI", ("model", "cpa/gemini-3.7-flash-high[1m]")),
     ("GPT", ("model", "sub2api/gpt-5.6-sol")),
-    ("OPUS", ("model", "opus")),
-    ("FABLE", ("model", "fable")),
+    ("OPUS", ("model", "claude-opus-5[1m]")),
+    ("FABLE", ("model", "claude-fable-5[1m]")),
     ("LOW", ("effort", "low")),
     ("MED", ("effort", "medium")),
     ("HIGH", ("effort", "high")),

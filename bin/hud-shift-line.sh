@@ -21,8 +21,8 @@ case "$id" in
   *grok*)      cur="GROK" ;;
   *gemini*)    cur="GEMINI" ;;
   *gpt*)       cur="GPT" ;;
-  *opus-4-8*)  cur="OPUS4.8" ;;
-  *opus*)      cur="OPUS" ;;
+  *claude-opus-5*) cur="OPUS" ;;
+  *opus*)      cur="OPUS4.8" ;;   # bare *opus* only reaches here after the 4-8 arm above
   *fable*)     cur="FABLE" ;;
 esac
 cure=""
@@ -39,12 +39,17 @@ MARK=$'\033[38;5;214m'
 SEP=$'\033[38;5;240m'
 R=$'\033[0m'
 
+ESC=$'\033'
+
+# Wrap a token in an OSC 8 hyperlink so Herdr's plugin link handler can claim it.
+# Herdr routes Ctrl+click on a matching URL to the plugin instead of the browser;
+# the label stays "OPUS", the URL never shows. Harmless in other hosts: terminals
+# that ignore OSC 8 just render the label.
 tok() {
-  if [ "$1" = "$cur" ] || [ "$1" = "$cure" ]; then
-    printf '%s%s%s' "$HOT" "$1" "$R"
-  else
-    printf '%s%s%s' "$DIM" "$1" "$R"
-  fi
+  local color
+  if [ "$1" = "$cur" ] || [ "$1" = "$cure" ]; then color="$HOT"; else color="$DIM"; fi
+  printf '%s]8;;https://ccshift.local/shift/%s%s\\%s%s%s%s]8;;%s\\' \
+    "$ESC" "$1" "$ESC" "$color" "$1" "$R" "$ESC" "$ESC"
 }
 
 printf '%s⇧%s %s  %s  %s  %s  %s  %s %s│%s %s  %s  %s  %s\n' \

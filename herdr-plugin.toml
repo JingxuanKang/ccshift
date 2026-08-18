@@ -1,0 +1,19 @@
+id = "ccshift"
+name = "ccshift"
+version = "1.0.0"
+min_herdr_version = "0.8.0"
+description = "Ctrl+click the Claude Code statusline shift bar to switch model/effort for the current session only."
+platforms = ["macos", "linux"]
+
+# The shift bar wraps each token in an OSC 8 hyperlink (bin/hud-shift-line.sh).
+# Herdr routes a Ctrl+click on a matching URL here instead of to the browser.
+[[actions]]
+id = "shift"
+title = "ccshift: switch model/effort"
+command = ["python3", "bin/herdr_shift.py"]
+
+[[link_handlers]]
+id = "shift-bar"
+title = "ccshift: switch model/effort"
+pattern = "^https://ccshift\\.local/shift/"
+action = "shift"
