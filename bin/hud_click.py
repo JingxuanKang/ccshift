@@ -35,20 +35,10 @@ LOCK = os.path.expanduser("~/.cache/ccshift.lock")
 
 # Longer tokens first, so OPUS doesn't shadow OPUS4.8, nor HIGH shadow XHIGH
 TOKENS = [
-    # Claude models go direct, unprefixed. Routing them through the cpa lane is
-    # pointless (same Anthropic subscription, one extra hop) and impossible
-    # anyway: codexwire drops lane models whose owned_by is "anthropic", so
-    # cpa/claude-* never reaches Claude Code's model list at all.
-    # Everything else has no direct route and must go through a lane — and for Claude Code
-    # that lane has to be cpa, never a key upstream. A `sub2api/…` model is forwarded to the
-    # relay verbatim, and the relay answers /v1/messages with 403 "this group does not allow
-    # /v1/messages dispatch": it speaks OpenAI, and codexwire translates no protocols. The
-    # same model reached as `cpa/…` goes through the lane, which does.
+    # Claude models use official, unprefixed ids. ccshift deliberately contains
+    # no gateway-specific model lanes.
     ("OPUS4.8", ("model", "claude-opus-4-8[1m]")),
     ("XHIGH", ("effort", "xhigh")),
-    ("GROK", ("model", "cpa/grok-4.6")),
-    ("GEMINI", ("model", "cpa/gemini-3.7-flash-high[1m]")),
-    ("GPT", ("model", "cpa/gpt-5.6-sol")),
     ("OPUS", ("model", "claude-opus-5[1m]")),
     ("FABLE", ("model", "claude-fable-5[1m]")),
     ("LOW", ("effort", "low")),

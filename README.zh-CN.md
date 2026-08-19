@@ -7,7 +7,7 @@ Claude Code statusline 里的**可点击换挡条**：鼠标点状态栏里的�
 ```
   [Fable 5 ◕ xhigh] │ my-project git:(main)
   Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
-  ⇧ GROK  GEMINI  GPT  OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH   ← 点这行
+  ⇧ OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH   ← 点这行
 ```
 
 当前 model / effort 以琥珀色加粗高亮。**tmux 下单击，Herdr 下 Ctrl+click**（原因见下）。
@@ -99,7 +99,7 @@ herdr plugin link /path/to/ccshift    # 项目根有 herdr-plugin.toml
 | 层 | 位置 | 职责 |
 |---|---|---|
 | 显示 | `bin/hud-shift-line.sh` | 作为 statusline 的追加行渲染换挡条；从 statusline JSON 高亮当前档；每个 token 包一层 OSC 8 超链接 |
-| 点击 | tmux：`~/.tmux.conf` 的 `MouseDown1Pane` 绑定<br>Herdr：`herdr-plugin.toml` 的 `[[link_handlers]]` | tmux 只拦截匹配 `⇧.*GROK.*XHIGH` 的行，其余点击原样放行<br>Herdr 只认 `^https://ccshift\.local/shift/` 的 Ctrl+click，其余点击与链接照常 |
+| 点击 | tmux：`~/.tmux.conf` 的 `MouseDown1Pane` 绑定<br>Herdr：`herdr-plugin.toml` 的 `[[link_handlers]]` | tmux 只拦截匹配 `⇧.*OPUS.*XHIGH` 的行，其余点击原样放行<br>Herdr 只认 `^https://ccshift\.local/shift/` 的 Ctrl+click，其余点击与链接照常 |
 | 执行 | tmux：`bin/hud-click.sh` → `bin/hud_click.py`<br>Herdr：`bin/herdr_shift.py` | 定位 token → 快照 settings → 注入命令 → 还原快照 |
 
 两个执行器共享同一份档位表和快照/还原逻辑——`herdr_shift.py` 直接 `from hud_click import ACTIONS, LOCK, read_settings, restore_defaults`，所以档位只维护一处。
@@ -143,7 +143,7 @@ printf '%s' "$input" | bash /路径/ccshift/bin/hud-shift-line.sh
 
 ```tmux
 set -g mouse on
-bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
+bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*OPUS.*XHIGH,#{mouse_line}}' \
   'run-shell -b "/路径/ccshift/bin/hud-click.sh #{socket_path} #{pane_id} #{mouse_x} #{mouse_y}"' \
   'select-pane -t = ; send-keys -M'
 ```
@@ -177,20 +177,13 @@ Herdr 把 Ctrl+click 命中的 URL 通过 `HERDR_PLUGIN_CLICKED_URL` 传给处�
 
 1. `bin/hud-shift-line.sh` —— 换挡条文案，以及 `$id` → 当前档的 `case` 匹配（高亮用）；
 2. `bin/hud_click.py` 的 `TOKENS` 表 —— token → `/model` / `/effort` 参数映射（**长 token 必须排在前面**：`OPUS4.8` 先于 `OPUS`，`XHIGH` 先于 `HIGH`）；
-3. tmux 绑定里的正则 `⇧.*GROK.*XHIGH` —— 识别换挡条行的特征。
+3. tmux 绑定里的正则 `⇧.*OPUS.*XHIGH` —— 识别换挡条行的特征。
 
 Herdr 那条路**不增加耦合点**：URL 里带的就是 token 文案本身（`/shift/OPUS4.8`），处理器查的是同一张 `TOKENS` 表，`herdr-plugin.toml` 的 pattern 只匹配前缀不关心具体档位。
 
 未来模型阵容变了（新档位 / 改名），照上面三处改即可。
 
-**模型 id 怎么填**（走 gateway 路由时特别容易踩）：`CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1` 时，Claude Code 只认网关 `/v1/models` 暴露的 id，填错就是 `Model '…' not found`。先列出真实可用的：
-
-```bash
-curl -s "${ANTHROPIC_BASE_URL%/}/v1/models" -H "anthropic-version: 2023-06-01" \
-  | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin)['data']]"
-```
-
-两个坑：**别名会换掉 id**（上游条目配了 `alias = "opus"`，列表里就是 `<lane>/opus` 而不是 `<lane>/claude-opus-4-8`）；**Anthropic 自家的模型不要走 lane**（codexwire 这类网关会主动剔除 `owned_by == "anthropic"` 的 lane 模型，因为 Claude Code 本就直连同一份订阅，绕一圈只是多一跳还重复计费）。所以 claude 系填**裸名**（`claude-opus-5[1m]`），只有没有直连路径的模型才填 `<lane>/<id>`。
+内置模型 id 都是官方、不带前缀的 Claude id。ccshift 不再附带任何网关专用 lane；若自建 Claude 端点还暴露额外模型，请显式定制档位表。
 
 ## 验证 / 排障
 

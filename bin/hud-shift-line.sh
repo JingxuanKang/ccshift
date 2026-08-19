@@ -3,7 +3,7 @@
 # stdin = statusline JSON (optional), used to highlight the current model/effort.
 # The click layer is the MouseDown1Pane binding in ~/.tmux.conf -> bin/hud-click.sh
 # (clicks anywhere else pass through untouched).
-# The line must contain "⇧", "GROK" and "XHIGH" together — the tmux binding uses
+# The line must contain "⇧", "OPUS" and "XHIGH" together — the tmux binding uses
 # that signature to recognize the shift bar; change the labels and you must update
 # the binding regex too. Labels here must stay in sync with TOKENS in hud_click.py.
 
@@ -18,9 +18,6 @@ fi
 
 cur=""
 case "$id" in
-  *grok*)      cur="GROK" ;;
-  *gemini*)    cur="GEMINI" ;;
-  *gpt*)       cur="GPT" ;;
   *claude-opus-5*) cur="OPUS" ;;
   *opus*)      cur="OPUS4.8" ;;   # bare *opus* only reaches here after the 4-8 arm above
   *fable*)     cur="FABLE" ;;
@@ -52,8 +49,8 @@ tok() {
     "$ESC" "$1" "$ESC" "$color" "$1" "$R" "$ESC" "$ESC"
 }
 
-printf '%s⇧%s %s  %s  %s  %s  %s  %s %s│%s %s  %s  %s  %s\n' \
+printf '%s⇧%s %s  %s  %s %s│%s %s  %s  %s  %s\n' \
   "$MARK" "$R" \
-  "$(tok GROK)" "$(tok GEMINI)" "$(tok GPT)" "$(tok OPUS)" "$(tok OPUS4.8)" "$(tok FABLE)" \
+  "$(tok OPUS)" "$(tok OPUS4.8)" "$(tok FABLE)" \
   "$SEP" "$R" \
   "$(tok LOW)" "$(tok MED)" "$(tok HIGH)" "$(tok XHIGH)"

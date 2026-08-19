@@ -7,7 +7,7 @@ A clickable **model / effort shift bar** in the Claude Code statusline. Click a 
 ```
   [Fable 5 ◕ xhigh] │ my-project git:(main)
   Context ░░░░░░░░░░ 0% │ Usage ██████░░░░ 57% (resets in 3h 32m)
-  ⇧ GROK  GEMINI  GPT  OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH   ← click this line
+  ⇧ OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH   ← click this line
 ```
 
 The current model / effort is highlighted in bold amber. **Single click under tmux, Ctrl+click under Herdr** (why, below).
@@ -91,7 +91,7 @@ herdr plugin link /path/to/ccshift    # the repo root holds herdr-plugin.toml
 | Layer | Where | Job |
 |---|---|---|
 | Display | `bin/hud-shift-line.sh` | Renders the bar as an extra statusline line; highlights the current model/effort from the statusline JSON; wraps each token in an OSC 8 hyperlink |
-| Click | tmux: `MouseDown1Pane` binding in `~/.tmux.conf`<br>Herdr: `[[link_handlers]]` in `herdr-plugin.toml` | tmux intercepts only lines matching `⇧.*GROK.*XHIGH`; everything else passes through<br>Herdr claims only Ctrl+clicks on `^https://ccshift\.local/shift/`; other clicks and links behave normally |
+| Click | tmux: `MouseDown1Pane` binding in `~/.tmux.conf`<br>Herdr: `[[link_handlers]]` in `herdr-plugin.toml` | tmux intercepts only lines matching `⇧.*OPUS.*XHIGH`; everything else passes through<br>Herdr claims only Ctrl+clicks on `^https://ccshift\.local/shift/`; other clicks and links behave normally |
 | Execute | tmux: `bin/hud-click.sh` → `bin/hud_click.py`<br>Herdr: `bin/herdr_shift.py` | Locate the token → snapshot settings → inject the command → restore the snapshot |
 
 Both executors share one token table and one snapshot/restore implementation — `herdr_shift.py` does `from hud_click import ACTIONS, LOCK, read_settings, restore_defaults`, so a model list change is edited in exactly one place.
@@ -135,7 +135,7 @@ printf '%s' "$input" | bash /path/to/ccshift/bin/hud-shift-line.sh
 
 ```tmux
 set -g mouse on
-bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \
+bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*OPUS.*XHIGH,#{mouse_line}}' \
   'run-shell -b "/path/to/ccshift/bin/hud-click.sh #{socket_path} #{pane_id} #{mouse_x} #{mouse_y}"' \
   'select-pane -t = ; send-keys -M'
 ```
@@ -169,20 +169,13 @@ The token table is coupled in **three places** — change one, change all three,
 
 1. `bin/hud-shift-line.sh` — the bar's labels, plus the `case` that maps `$id` to the current tier for highlighting;
 2. the `TOKENS` table in `bin/hud_click.py` — label → `/model` / `/effort` argument mapping (**longer tokens must come first**: `OPUS4.8` before `OPUS`, `XHIGH` before `HIGH`);
-3. the regex `⇧.*GROK.*XHIGH` in the tmux binding — the signature that identifies the bar's line.
+3. the regex `⇧.*OPUS.*XHIGH` in the tmux binding — the signature that identifies the bar's line.
 
 The Herdr path **adds no fourth coupling point**: the URL carries the label itself (`/shift/OPUS4.8`), the handler looks it up in that same `TOKENS` table, and the manifest pattern matches only the prefix.
 
 When the model lineup changes (new tiers, renames), update those three places.
 
-**Getting model ids right** (easy to trip on behind a gateway): with `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1`, Claude Code only accepts ids the gateway advertises on `/v1/models`; anything else comes back as `Model '…' not found`. List what is actually available first:
-
-```bash
-curl -s "${ANTHROPIC_BASE_URL%/}/v1/models" -H "anthropic-version: 2023-06-01" \
-  | python3 -c "import sys,json;[print(m['id']) for m in json.load(sys.stdin)['data']]"
-```
-
-Two traps. **An alias replaces the id** — an upstream entry carrying `alias = "opus"` appears as `<lane>/opus`, not `<lane>/claude-opus-4-8`. And **Anthropic's own models should not go through a lane**: gateways like codexwire deliberately drop lane models whose `owned_by` is `anthropic`, since Claude Code already talks to that same subscription directly and routing it through adds a hop while double-spending the quota. So give claude models their **bare** ids (`claude-opus-5[1m]`) and reserve `<lane>/<id>` for models with no direct route.
+The bundled model ids are official, unprefixed Claude ids. ccshift does not include gateway-specific lanes; customize the token table explicitly if your own Claude endpoint exposes additional models.
 
 ## Verify / debug
 

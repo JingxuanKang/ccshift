@@ -61,7 +61,7 @@ $BEGIN_MARK
 # ccshift: click the statusline shift bar to switch model/effort for the
 # current session. All other clicks pass through untouched.
 set -g mouse on
-bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*GROK.*XHIGH,#{mouse_line}}' \\
+bind-key -n MouseDown1Pane if-shell -F '#{m/r:⇧.*OPUS.*XHIGH,#{mouse_line}}' \\
   'run-shell -b "$ROOT/bin/hud-click.sh #{socket_path} #{pane_id} #{mouse_x} #{mouse_y}"' \\
   'select-pane -t = ; send-keys -M'
 $END_MARK
@@ -168,7 +168,7 @@ install() {
   cat <<'EOF'
 
 Done. Open Claude Code inside tmux and the shift bar appears in the statusline:
-  ⇧ GROK  GEMINI  GPT  OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH
+  ⇧ OPUS  OPUS4.8  FABLE │ LOW  MED  HIGH  XHIGH
 Click a token to switch this session's model or effort.
 Uninstall anytime with: ./install.sh --uninstall
 EOF
