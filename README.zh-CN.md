@@ -81,7 +81,7 @@ herdr plugin link /path/to/ccshift    # 项目根的 herdr-plugin.toml
 | 拦截方式 | `~/.tmux.conf` 的 `MouseDown1Pane` 绑定 | `herdr-plugin.toml` 的 `[[link_handlers]]` |
 | 怎么识别点到哪 | 正则匹配换挡条行 + 按显示列反查 token（CJK 宽字符算 2 列） | URL 直接编码档位：`https://ccshift.local/shift/OPUS4.8` |
 | 触发操作 | 单击 | **Ctrl+click** |
-| 注入方式 | C-u 清行 → 逐字输入 → capture 验证 composer → 回车，≤4 次重试 | `herdr agent prompt <pane> "/model …"`，原子提交文本 + Enter |
+| 注入方式 | C-u 清行 → 逐字输入 → capture 验证 composer → 回车，≤4 次重试 | `herdr agent prompt <pane> "/model …"`，原子提交文本 + Enter；默认值还原交给独立后台子进程，点击立即返回 |
 | 处理器 | `bin/hud_click.py` | `bin/herdr_shift.py`（复用前者的档位表与快照逻辑） |
 
 换挡条的每个 token 都用 **OSC 8 超链接**包着（`bin/hud-shift-line.sh`），标签仍显示 `OPUS`，URL 藏在背后。Claude Code 会原样透传 OSC 8，Herdr 认得。tmux 和裸终端不处理 OSC 8，只渲染标签，所以**这层包装对它们完全无害**。
@@ -104,7 +104,7 @@ herdr plugin link /path/to/ccshift    # 项目根有 herdr-plugin.toml
 
 两个执行器共享同一份档位表和快照/还原逻辑——`herdr_shift.py` 直接 `from hud_click import ACTIONS, LOCK, read_settings, restore_defaults`，所以档位只维护一处。
 
-还原的安全性依据：`settings.json` 的 `model` 键只在会话启动时读一次、不热重载（验证于 Claude Code 2.1.200），点击后还原不影响任何运行中的会话。并发点击用同一个 `flock` 串行化（两条路径共用锁文件）。tmux 绑定传入 `#{socket_path}`，所以在**任意 tmux server / socket** 上都能工作；Herdr 侧的目标 pane 由 `HERDR_PLUGIN_CONTEXT_JSON` 的 `focused_pane_id` 给出，并校验 `focused_pane_agent == "claude"` 后才注入，避免打字到别的 agent 里。
+还原的安全性依据：`settings.json` 的 `model` 键只在会话启动时读一次、不热重载（验证于 Claude Code 2.1.200），点击后还原不影响任何运行中的会话。Herdr 下由独立后台子进程轮询 Claude Code 的设置写入并还原快照，不再阻塞界面。并发点击用同一个 `flock` 串行化（两条路径共用锁文件）。tmux 绑定传入 `#{socket_path}`，所以在**任意 tmux server / socket** 上都能工作；Herdr 侧的目标 pane 由 `HERDR_PLUGIN_CONTEXT_JSON` 的 `focused_pane_id` 给出，并校验 `focused_pane_agent == "claude"` 后才注入，避免打字到别的 agent 里。
 
 ## 使用须知（费用与缓存）
 

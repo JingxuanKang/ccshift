@@ -14,7 +14,9 @@ bin/hud-shift-line.sh wraps around every token. Flow:
 3. Submit the /model or /effort command with `herdr agent prompt`, which sends
    text and Enter atomically while honoring the pane's bracketed-paste mode.
    That replaces the tmux version's clear/type/verify/Enter retry loop.
-4. Restore the two settings keys, so the switch affects this session only.
+4. Return to Herdr immediately. A detached child waits until Claude Code has
+   written the selected value, then restores the two settings keys so the
+   switch affects this session only without blocking the UI.
 
 The token table and the settings snapshot/restore logic are imported from
 hud_click (the tmux handler) so there is exactly one copy of each.
@@ -38,6 +40,8 @@ sys.path.insert(0, HERE)
 from hud_click import ACTIONS, LOCK, read_settings, restore_defaults  # noqa: E402
 
 LOG = os.path.join(os.path.dirname(HERE), "logs", "herdr-shift.log")
+RESTORE_WAIT_SECONDS = 30.0
+RESTORE_POLL_SECONDS = 0.05
 
 
 def log(msg):
@@ -45,6 +49,67 @@ def log(msg):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(LOG, "a") as f:
         f.write(f"{ts} {msg}\n")
+
+
+def wait_and_restore(kind, value, snap_model, snap_effort):
+    """Wait for Claude Code's settings write, then restore the saved defaults.
+
+    The Herdr action itself must not sleep: unlike tmux's run-shell -b, plugin
+    actions are observed until their command exits. Polling in a detached child
+    keeps the click responsive while still restoring only after Claude has
+    consumed the slash command.
+    """
+    key = "model" if kind == "model" else "effortLevel"
+    snap_value = snap_model if kind == "model" else snap_effort
+
+    if snap_value == value:
+        return "not_needed"
+
+    deadline = time.monotonic() + RESTORE_WAIT_SECONDS
+    while time.monotonic() < deadline:
+        data = read_settings()
+        if data is not None and data.get(key) == value:
+            # Let the settings rename settle before replacing the file again.
+            time.sleep(RESTORE_POLL_SECONDS)
+            restore_defaults(snap_model, snap_effort)
+            return "observed"
+        time.sleep(RESTORE_POLL_SECONDS)
+
+    # Usually a cancelled large-context confirmation: put back any defaults
+    # that did change, but do not keep the plugin lock forever.
+    restore_defaults(snap_model, snap_effort)
+    return "timeout"
+
+
+def schedule_restore(kind, value, snap_model, snap_effort, lock_fd, detail):
+    """Fork a detached restorer that retains the shared click lock."""
+    try:
+        pid = os.fork()
+    except OSError as exc:
+        outcome = wait_and_restore(kind, value, snap_model, snap_effort)
+        os.close(lock_fd)
+        log(f"{detail} restore={outcome} background=false fork_error={exc!r}")
+        return None
+
+    if pid:
+        os.close(lock_fd)
+        return pid
+
+    try:
+        os.setsid()
+        devnull = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(devnull, fd)
+        if devnull > 2:
+            os.close(devnull)
+
+        outcome = wait_and_restore(kind, value, snap_model, snap_effort)
+        log(f"{detail} restore={outcome} background=true defaults_restored=true")
+    except BaseException as exc:
+        log(f"{detail} restore=failed background=true error={exc!r}")
+    finally:
+        os.close(lock_fd)
+        os._exit(0)
 
 
 def main():
@@ -93,12 +158,17 @@ def main():
         capture_output=True, text=True,
     )
     ok = r.returncode == 0
+    detail = f"pane={pane} status={status} token={token} {kind}={value}"
     if ok:
-        time.sleep(1.5)  # let Claude Code consume the command before restoring
-    restore_defaults(snap_model, snap_effort)
+        restore_pid = schedule_restore(
+            kind, value, snap_model, snap_effort, lock_fd, detail
+        )
+        log(f"{detail} ok=true dispatched=true restore_pid={restore_pid}")
+        return
 
-    log(f"pane={pane} status={status} token={token} {kind}={value} ok={ok} "
-        f"defaults_restored=true" + ("" if ok else f" err={r.stderr.strip()!r}"))
+    restore_defaults(snap_model, snap_effort)
+    os.close(lock_fd)
+    log(f"{detail} ok=false defaults_restored=true err={r.stderr.strip()!r}")
 
 
 if __name__ == "__main__":
