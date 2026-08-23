@@ -81,7 +81,7 @@ herdr plugin link /path/to/ccshift    # 项目根的 herdr-plugin.toml
 | 拦截方式 | `~/.tmux.conf` 的 `MouseDown1Pane` 绑定 | `herdr-plugin.toml` 的 `[[link_handlers]]` |
 | 怎么识别点到哪 | 正则匹配换挡条行 + 按显示列反查 token（CJK 宽字符算 2 列） | URL 直接编码档位：`https://ccshift.local/shift/OPUS4.8` |
 | 触发操作 | 单击 | **Ctrl+click** |
-| 注入方式 | C-u 清行 → 逐字输入 → capture 验证 composer → 回车，≤4 次重试 | `herdr agent prompt <pane> "/model …"`，原子提交文本 + Enter；默认值还原交给独立后台子进程，点击立即返回 |
+| 注入方式 | C-u 清行 → 逐字输入 → capture 验证 composer → 回车，≤4 次重试 | `herdr agent prompt <pane> "/model …"`，原子提交文本 + Enter；整个切换流程都在独立后台子进程里，无论切换要多久，点击都在 ~40ms 内返回 |
 | 处理器 | `bin/hud_click.py` | `bin/herdr_shift.py`（复用前者的档位表与快照逻辑） |
 
 换挡条的每个 token 都用 **OSC 8 超链接**包着（`bin/hud-shift-line.sh`），标签仍显示 `OPUS`，URL 藏在背后。Claude Code 会原样透传 OSC 8，Herdr 认得。tmux 和裸终端不处理 OSC 8，只渲染标签，所以**这层包装对它们完全无害**。
@@ -104,7 +104,9 @@ herdr plugin link /path/to/ccshift    # 项目根有 herdr-plugin.toml
 
 两个执行器共享同一份档位表和快照/还原逻辑——`herdr_shift.py` 直接 `from hud_click import ACTIONS, LOCK, read_settings, restore_defaults`，所以档位只维护一处。
 
-还原的安全性依据：`settings.json` 的 `model` 键只在会话启动时读一次、不热重载（验证于 Claude Code 2.1.200），点击后还原不影响任何运行中的会话。Herdr 下由独立后台子进程轮询 Claude Code 的设置写入并还原快照，不再阻塞界面。并发点击用同一个 `flock` 串行化（两条路径共用锁文件）。tmux 绑定传入 `#{socket_path}`，所以在**任意 tmux server / socket** 上都能工作；Herdr 侧的目标 pane 由 `HERDR_PLUGIN_CONTEXT_JSON` 的 `focused_pane_id` 给出，并校验 `focused_pane_agent == "claude"` 后才注入，避免打字到别的 agent 里。
+**快照覆盖哪些键。** 一次切换可能改动三个键，三个都会被快照并还原：`model`、旧的顶层 `effortLevel`，以及 `modelSettings` —— 现在的 Claude Code 把 effort 按模型存在 `modelSettings.<归一化 model id>.effortLevel` 下（`claude-opus-5[1m]` 落到 `claude-opus-5`），不再写顶层键。只盯 `effortLevel` 会导致 effort 点击既观测不到、也永远还原不回去。
+
+还原的安全性依据：`settings.json` 的 `model` 键只在会话启动时读一次、不热重载（验证于 Claude Code 2.1.241），点击后还原不影响任何运行中的会话；`/effort` 同样把 effort 钉在当前会话上，之后文件里是什么值都不影响它。并发点击用同一个 `flock` 串行化（两条路径共用锁文件）。Herdr 下这把锁在**后台子进程内部**获取，绝不在 Herdr 正在观察的那个进程里，所以一次慢切换只会推迟下一次切换，不会拖住终端；10 秒内拿不到锁的点击直接放弃并记日志，不会挂死。连续快速点击都会生效，但锁不保证先进先出，同一秒内连点两个不同 token 可能最终落在其中任意一个上。tmux 绑定传入 `#{socket_path}`，所以在**任意 tmux server / socket** 上都能工作；Herdr 侧的目标 pane 由 `HERDR_PLUGIN_CONTEXT_JSON` 的 `focused_pane_id` 给出，并校验 `focused_pane_agent == "claude"` 后才注入，避免打字到别的 agent 里。
 
 ## 使用须知（费用与缓存）
 

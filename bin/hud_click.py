@@ -18,6 +18,7 @@ Concurrent clicks are serialized with a file lock so a previous click's
 leaked values are never mistaken for defaults.
 """
 import argparse
+import copy
 import datetime
 import fcntl
 import json
@@ -85,19 +86,57 @@ def read_settings():
         return None
 
 
-def restore_defaults(snap_model, snap_effort):
+# Every settings key a /model or /effort click can move. `effortLevel` is the
+# legacy flat key; current Claude Code writes per-model effort under
+# modelSettings[<normalized model id>].effortLevel instead (the id is normalized,
+# so "claude-opus-5[1m]" lands under "claude-opus-5"). Watching only the flat key
+# means an effort click is never observed and never undone, so the snapshot and
+# the restore both have to cover all three.
+SNAP_KEYS = ("model", "effortLevel", "modelSettings")
+
+
+def snapshot_settings():
+    """Pre-click values of every key a click can move (= the user's defaults).
+
+    A key absent from settings.json is absent from the snapshot, so restoring
+    deletes whatever the click added rather than inventing a value.
+    """
+    data = read_settings() or {}
+    return {k: copy.deepcopy(data[k]) for k in SNAP_KEYS if k in data}
+
+
+def settings_diverged(snap):
+    """True once Claude Code has written any watched key away from the snapshot.
+
+    This is the "the slash command landed" signal. It does not care *which* key
+    moved, so it works without knowing which model the session is on and which
+    modelSettings entry an /effort click will therefore touch.
+    """
     data = read_settings()
     if data is None:
-        return
+        return False
+    return any(data.get(k) != snap.get(k) for k in SNAP_KEYS)
+
+
+def restore_snapshot(snap):
+    """Put every watched key back to its snapshot value. Returns True if it wrote.
+
+    Re-reads the file first so unrelated keys written meanwhile survive.
+    """
+    data = read_settings()
+    if data is None:
+        return False
     changed = False
-    if snap_model is not None and data.get("model") != snap_model:
-        data["model"] = snap_model
-        changed = True
-    if snap_effort is not None and data.get("effortLevel") != snap_effort:
-        data["effortLevel"] = snap_effort
-        changed = True
+    for k in SNAP_KEYS:
+        if k in snap:
+            if data.get(k) != snap[k]:
+                data[k] = copy.deepcopy(snap[k])
+                changed = True
+        elif k in data:
+            del data[k]
+            changed = True
     if not changed:
-        return
+        return False
     mode = stat.S_IMODE(os.stat(SETTINGS).st_mode)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(SETTINGS), prefix=".shift-")
     try:
@@ -109,6 +148,7 @@ def restore_defaults(snap_model, snap_effort):
     except BaseException:
         os.unlink(tmp)
         raise
+    return True
 
 
 def composer_line(pane):
@@ -175,13 +215,12 @@ def main():
         return
     kind, value = action
 
-    snap = read_settings() or {}
-    snap_model, snap_effort = snap.get("model"), snap.get("effortLevel")
+    snap = snapshot_settings()
 
     cmds = [f"/model {value}"] if kind == "model" else [f"/effort {value}"]
 
     ok = all(send_command(args.pane, c) for c in cmds)
-    restore_defaults(snap_model, snap_effort)
+    restore_snapshot(snap)
     log(f"pane={args.pane} click=({args.x},{args.y}) {kind}={value} "
         f"cmds={cmds} ok={ok} defaults_restored=true")
 

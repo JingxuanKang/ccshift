@@ -73,7 +73,7 @@ Both can be installed at once; they never interfere:
 | Interception | `MouseDown1Pane` binding in `~/.tmux.conf` | `[[link_handlers]]` in `herdr-plugin.toml` |
 | Locating the token | regex-match the bar's line, then walk display columns (CJK wide chars count as 2) | the URL names it outright: `https://ccshift.local/shift/OPUS4.8` |
 | Gesture | single click | **Ctrl+click** |
-| Injection | C-u clear → type → verify composer → Enter, up to 4 retries | `herdr agent prompt <pane> "/model …"`, text plus Enter atomically; default restoration continues in a detached child so the click returns immediately |
+| Injection | C-u clear → type → verify composer → Enter, up to 4 retries | `herdr agent prompt <pane> "/model …"`, text plus Enter atomically; the whole switch runs in a detached child so the click returns in ~40ms no matter how long the switch takes |
 | Handler | `bin/hud_click.py` | `bin/herdr_shift.py` (reuses the former's token table and snapshot logic) |
 
 Every token on the bar is wrapped in an **OSC 8 hyperlink** (`bin/hud-shift-line.sh`): the label still reads `OPUS`, the URL stays hidden. Claude Code passes OSC 8 through untouched and Herdr honors it. tmux and bare terminals ignore OSC 8 and render just the label, so **the wrapping costs them nothing**.
@@ -96,7 +96,9 @@ herdr plugin link /path/to/ccshift    # the repo root holds herdr-plugin.toml
 
 Both executors share one token table and one snapshot/restore implementation — `herdr_shift.py` does `from hud_click import ACTIONS, LOCK, read_settings, restore_defaults`, so a model list change is edited in exactly one place.
 
-Restore safety: `settings.json`'s `model` key is read once at session startup and never hot-reloaded (verified on Claude Code 2.1.200), so restoring it after a click never affects running sessions. Under Herdr, a detached child polls for Claude Code's settings write and restores the snapshot without holding up the UI. Concurrent clicks are serialized with `flock` (both paths share the lock file). The `#{socket_path}` passed by the tmux binding means it works on **any tmux server/socket**; on the Herdr side the target pane comes from `focused_pane_id` in `HERDR_PLUGIN_CONTEXT_JSON`, and injection only proceeds when `focused_pane_agent == "claude"`, so a stray click never types into a different agent.
+**What gets snapshotted.** A switch can move three keys, and all three are snapshotted and restored: `model`, the legacy flat `effortLevel`, and `modelSettings` — current Claude Code stores effort per model under `modelSettings.<normalized model id>.effortLevel` (so `claude-opus-5[1m]` lands under `claude-opus-5`), not in the flat key. Watching only `effortLevel` means an effort click is never observed and never undone.
+
+Restore safety: `settings.json`'s `model` key is read once at session startup and never hot-reloaded (verified on Claude Code 2.1.241), so restoring it after a click never affects running sessions; `/effort` likewise pins the session's effort independently of what the file says afterwards. Concurrent clicks are serialized with `flock` (both paths share the lock file). Under Herdr the lock is taken **inside** the detached child, never in the process Herdr is watching, so a slow switch delays the next switch but never the terminal; a click that cannot get the lock within 10s gives up and logs rather than hanging. Rapid-fire clicks are all applied but the lock does not guarantee FIFO, so mashing two different tokens inside the same second may settle on either one. The `#{socket_path}` passed by the tmux binding means it works on **any tmux server/socket**; on the Herdr side the target pane comes from `focused_pane_id` in `HERDR_PLUGIN_CONTEXT_JSON`, and injection only proceeds when `focused_pane_agent == "claude"`, so a stray click never types into a different agent.
 
 ## Costs & caching
 
