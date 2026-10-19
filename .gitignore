@@ -7,3 +7,6 @@ __pycache__/
 # Python 编译缓存
 __pycache__/
 *.pyc
+
+# html-gallery 发布留下的本地副本(真源在 gallery.jingxuan.uk),不进 git
+/gallery/
