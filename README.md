@@ -1,5 +1,7 @@
 # ccshift
 
+> **Retired (2026-10-25).** No longer installed on any machine; the code is kept for reference.
+
 **English** | [中文](README.zh-CN.md)
 
 A clickable **model / effort shift bar** in the Claude Code statusline. Click a token to switch the **current session's** model or reasoning effort — your defaults never move, and new sessions always start from them.
